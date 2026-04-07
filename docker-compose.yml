@@ -1,0 +1,14 @@
+services:
+  simulation:
+    build: .
+    cpus: 24
+    # Resultater gemmes i /app/results.csv inde i containeren.
+    # Mount et lokalt volume for at hente dem ud:
+    volumes:
+      - ./output:/app/output
+    command: >
+      python run_experiments.py
+      --workers 24
+      --replications 100
+      --days 365
+      --output /app/output/results.csv
