@@ -1,0 +1,6 @@
+.DS_Store
+JSR_NPS_Paper.pdf
+output/
+study2/daily_queue_lengths.csv
+*.pyc
+__pycache__/
