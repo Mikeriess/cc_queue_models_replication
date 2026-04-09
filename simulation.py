@@ -1023,6 +1023,14 @@ class SimulationMetrics:
     total_cases_closed: int = 0
     nps_responses: List[int] = field(default_factory=list)
 
+    # Per-case opsamlinger (til Fig. 8 case resolution time og Fig. 10 robusthed)
+    # closed_case_arrivals: ankomsttider i dage for alle lukkede sager
+    # closed_case_throughput_days: throughput-tider i dage for alle lukkede sager
+    # all_case_arrivals: ankomsttider for ALLE sager (også uafsluttede)
+    closed_case_arrivals: List[float] = field(default_factory=list)
+    closed_case_throughput_days: List[float] = field(default_factory=list)
+    all_case_arrivals: List[float] = field(default_factory=list)
+
     @property
     def avg_queue_length(self) -> float:
         """Gennemsnitlig kølængde (Eq. 12)."""
@@ -1067,6 +1075,34 @@ class SimulationMetrics:
         detractors = sum(1 for n in self.nps_responses if n <= 6) / total
         return (promoters - detractors) * 100
 
+    @property
+    def avg_case_resolution_time_days(self) -> float:
+        """
+        Gennemsnitlig sags-resolutionstid (throughput-tid) i dage (Fig. 8).
+
+        Dette er tiden fra ankomst til lukning, inkl. ventetid og behandlingstid,
+        for alle faktisk lukkede sager i kørslen.
+        """
+        if not self.closed_case_throughput_days:
+            return 0.0
+        return float(np.mean(self.closed_case_throughput_days))
+
+    def percent_closed_in_window(self, start_day: float) -> float:
+        """
+        Andel af sager der ankom efter start_day og blev lukket (Fig. 10).
+
+        Artiklens robusthedstjek ekskluderer de første 30 dages burn-in og
+        genberegner % lukkede sager over de resterende 335 dage.
+
+        Args:
+            start_day: Nedre grænse for ankomsttid (fx 30.0)
+        """
+        n_arrived = sum(1 for t in self.all_case_arrivals if t >= start_day)
+        if n_arrived == 0:
+            return 0.0
+        n_closed = sum(1 for t in self.closed_case_arrivals if t >= start_day)
+        return n_closed / n_arrived
+
 
 def simulate_timeline(discipline: str, n_agents: int, sla_hours: Optional[float],
                        d_end: int = 365, seed: Optional[int] = None) -> SimulationMetrics:
@@ -1103,6 +1139,7 @@ def simulate_timeline(discipline: str, n_agents: int, sla_hours: Optional[float]
     # Pre-generér alle ankomster (Alg. 3)
     all_cases = generate_all_arrivals(d_end, rng)
     metrics.total_cases_arrived = len(all_cases)
+    metrics.all_case_arrivals = [c.arrival_time for c in all_cases]
 
     # Opret lookup-dict for hurtig adgang
     case_lookup = {c.id: c for c in all_cases}
@@ -1162,6 +1199,12 @@ def simulate_timeline(discipline: str, n_agents: int, sla_hours: Optional[float]
                 metrics.nps_responses.append(nps)
                 metrics.total_cases_closed += 1
 
+                # Gem per-case data til Fig. 8 og Fig. 10
+                metrics.closed_case_arrivals.append(case.arrival_time)
+                # actual_throughput_minutes er i minutter → konvertér til dage
+                throughput_days = case.actual_throughput_minutes / (60.0 * 24.0)
+                metrics.closed_case_throughput_days.append(throughput_days)
+
         # Fjern lukkede sager fra queue_buffer (for at holde den kompakt)
         queue_buffer = [c for c in queue_buffer if c.status != "closed"]
 
@@ -1201,6 +1244,7 @@ def run_single_simulation(params: dict) -> dict:
     metrics = simulate_timeline(discipline, n_agents, sla_hours, d_end, seed)
 
     return {
+        # Aggregerede metrikker (skrives til results.csv)
         "discipline": discipline,
         "n_agents": n_agents,
         "sla_hours": sla_hours if sla_hours else "None",
@@ -1213,6 +1257,11 @@ def run_single_simulation(params: dict) -> dict:
         "organisation_nps": metrics.organisation_nps,
         "total_cases_arrived": metrics.total_cases_arrived,
         "total_cases_closed": metrics.total_cases_closed,
+        # Nye aggregerede metrikker til Fig. 8 og Fig. 10
+        "avg_case_resolution_time_days": metrics.avg_case_resolution_time_days,
+        "percent_cases_closed_last_335": metrics.percent_closed_in_window(30.0),
+        # Rå tidsserier (skrives til separat fil — udelades fra results.csv)
+        "_daily_queue_lengths": metrics.daily_queue_lengths,
     }
 
 

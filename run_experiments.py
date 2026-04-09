@@ -133,10 +133,46 @@ def run_experiments(n_workers: int = None, n_replications: int = N_REPLICATIONS,
     print(f"\nFærdig! Total tid: {total_time:.1f}s ({total_time/60:.1f} min)")
     print(f"Gennemsnitlig tid pr. kørsel: {total_time * n_workers / total:.2f}s")
 
-    # Konvertér til DataFrame og gem
-    df = pd.DataFrame(results)
+    # Separér aggregerede metrikker fra rå tidsserier
+    # Tidsserierne (daily_queue_lengths) gemmes i en separat fil, da de er for
+    # store til at passe pænt ind i den aggregerede CSV.
+    daily_records = []
+    aggregate_records = []
+
+    for r in results:
+        daily_q = r.pop("_daily_queue_lengths")
+        aggregate_records.append(r)
+
+        # Udfold daglige kølængder til long-format rækker
+        for day, qlen in enumerate(daily_q):
+            daily_records.append({
+                "discipline": r["discipline"],
+                "n_agents": r["n_agents"],
+                "sla_hours": r["sla_hours"],
+                "replication": r["replication"],
+                "day": day,
+                "queue_length": qlen,
+            })
+
+    # Gem aggregerede metrikker
+    df = pd.DataFrame(aggregate_records)
     df.to_csv(output_file, index=False)
-    print(f"\nResultater gemt i: {output_file}")
+    print(f"\nAggregerede resultater gemt i: {output_file}")
+
+    # Gem daglige kølængder (til Fig. 5 og 6)
+    # Filnavn afledes af output_file: results.csv → daily_queue_lengths.csv
+    from pathlib import Path
+    out_path = Path(output_file)
+    daily_file = out_path.with_name(
+        out_path.stem.replace("results", "daily_queue_lengths") + out_path.suffix
+    )
+    if daily_file.name == out_path.name:  # fallback hvis replace ikke virkede
+        daily_file = out_path.with_stem(out_path.stem + "_daily")
+
+    daily_df = pd.DataFrame(daily_records)
+    daily_df.to_csv(daily_file, index=False)
+    print(f"Daglige kølængder gemt i: {daily_file}")
+    print(f"  ({len(daily_df):,} rækker, ~{daily_file.stat().st_size / 1e6:.0f} MB)")
 
     return df
 
