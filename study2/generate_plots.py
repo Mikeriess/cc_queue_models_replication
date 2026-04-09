@@ -28,8 +28,17 @@ import pandas as pd
 # =============================================================================
 
 SCRIPT_DIR = Path(__file__).parent
-CSV_PATH = SCRIPT_DIR / "results_queue_experiment.csv"
-DAILY_PATH = SCRIPT_DIR / "daily_queue_lengths.csv"
+RESULTS_DIR = SCRIPT_DIR / "results"
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+CSV_PATH = RESULTS_DIR / "results.csv"
+DAILY_PATH = RESULTS_DIR / "daily_queue_lengths.csv"
+
+# Fallback til gamle filnavne hvis de nye ikke findes
+if not CSV_PATH.exists():
+    legacy = SCRIPT_DIR / "results_queue_experiment.csv"
+    if legacy.exists():
+        CSV_PATH = legacy
 
 df = pd.read_csv(CSV_PATH)
 df["sla_label"] = df["sla_hours"].fillna("None").astype(str)
@@ -154,7 +163,7 @@ def make_fig5_or_6(sla_label: str, filename: str, title: str):
     fig.suptitle(title, y=1.03, fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.98])
 
-    out = SCRIPT_DIR / filename
+    out = RESULTS_DIR / filename
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out.name}")
@@ -189,7 +198,7 @@ def make_fig7():
                  y=1.02, fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
 
-    out = SCRIPT_DIR / "fig7_queue_util_closed.pdf"
+    out = RESULTS_DIR / "fig7_queue_util_closed.pdf"
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out.name}")
@@ -237,7 +246,7 @@ def make_fig8():
     fig.suptitle(title, y=1.02, fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
-    out = SCRIPT_DIR / "fig8_waiting_and_resolution.pdf"
+    out = RESULTS_DIR / "fig8_waiting_and_resolution.pdf"
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out.name}")
@@ -270,7 +279,7 @@ def make_fig9():
                  y=1.02, fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
-    out = SCRIPT_DIR / "fig9_nps.pdf"
+    out = RESULTS_DIR / "fig9_nps.pdf"
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out.name}")
@@ -308,7 +317,7 @@ def make_fig10():
                  y=1.10, fontsize=11)
     fig.tight_layout()
 
-    out = SCRIPT_DIR / "fig10_closed_last_335.pdf"
+    out = RESULTS_DIR / "fig10_closed_last_335.pdf"
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out.name}")
@@ -342,7 +351,7 @@ def make_summary():
     fig.suptitle("All-metrics summary (no SLA)", y=1.01, fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
-    out = SCRIPT_DIR / "summary_all_metrics.pdf"
+    out = RESULTS_DIR / "summary_all_metrics.pdf"
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out.name}")

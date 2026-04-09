@@ -1,14 +1,17 @@
 version: "2.4"
 
+# Docker compose læser automatisk .env i samme mappe som denne fil.
+# Variablen STUDY bestemmer hvilken under-mappe der bygges og køres
+# (fx study2, study3). Hvert studie har sin egen Dockerfile og results-mappe.
+
 services:
   simulation:
-    build: .
+    build:
+      context: ./${STUDY}
+      dockerfile: Dockerfile
+    image: cc_queue_models_${STUDY}
+    container_name: cc_queue_models_${STUDY}
     cpus: 24
     volumes:
-      - ./output:/app/output
-    command: >
-      python run_experiments.py
-      --workers 24
-      --replications 100
-      --days 365
-      --output /app/output/results.csv
+      # Montér studiets lokale results-mappe så output persisterer på host
+      - ./${STUDY}/results:/app/results

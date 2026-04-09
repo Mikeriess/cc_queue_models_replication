@@ -7,4 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY simulation.py run_experiments.py ./
 
-CMD ["python", "run_experiments.py", "--workers", "24"]
+# Opret results-mappe (monteres også som volume udefra)
+RUN mkdir -p /app/results
+
+CMD ["python", "run_experiments.py"]

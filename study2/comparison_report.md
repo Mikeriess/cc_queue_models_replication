@@ -212,12 +212,14 @@ simulationskørsler.
 
 ## Genererede figurer
 
+Alle figurer ligger i `results/` undermappen.
+
 | Fil | Svarer til artiklens |
 |-----|---------------------|
-| `fig5_daily_queue_no_sla.pdf` | Fig. 5 (daglig kølængde, no SLA) |
-| `fig6_daily_queue_sla60.pdf` | Fig. 6 (daglig kølængde, SLA=60h) |
-| `fig7_queue_util_closed.pdf` | Fig. 7 (queue, util, closed%) |
-| `fig8_waiting_and_resolution.pdf` | Fig. 8 (waiting + resolution time) |
-| `fig9_nps.pdf` | Fig. 9 (individual + organisation NPS) |
-| `fig10_closed_last_335.pdf` | Fig. 10 (robusthedstjek, sidste 335 dage) |
-| `summary_all_metrics.pdf` | Bonus: alle 6 metrics i ét overblik |
+| `results/fig5_daily_queue_no_sla.pdf` | Fig. 5 (daglig kølængde, no SLA) |
+| `results/fig6_daily_queue_sla60.pdf` | Fig. 6 (daglig kølængde, SLA=60h) |
+| `results/fig7_queue_util_closed.pdf` | Fig. 7 (queue, util, closed%) |
+| `results/fig8_waiting_and_resolution.pdf` | Fig. 8 (waiting + resolution time) |
+| `results/fig9_nps.pdf` | Fig. 9 (individual + organisation NPS) |
+| `results/fig10_closed_last_335.pdf` | Fig. 10 (robusthedstjek, sidste 335 dage) |
+| `results/summary_all_metrics.pdf` | Bonus: alle 6 metrics i ét overblik |

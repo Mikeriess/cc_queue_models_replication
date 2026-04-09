@@ -1,6 +1,11 @@
 .DS_Store
 JSR_NPS_Paper.pdf
-output/
-study2/daily_queue_lengths.csv
 *.pyc
 __pycache__/
+
+# Ekskludér store tidsserie-filer (kan regenereres via docker compose)
+study2/results/daily_queue_lengths.csv
+study3/results/daily_queue_lengths.csv
+
+# Gammel top-level output-mappe (før reorganisering)
+output/

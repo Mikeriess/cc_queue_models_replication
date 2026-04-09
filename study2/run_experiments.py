@@ -154,6 +154,10 @@ def run_experiments(n_workers: int = None, n_replications: int = N_REPLICATIONS,
                 "queue_length": qlen,
             })
 
+    # Sørg for at output-mappen findes
+    from pathlib import Path
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+
     # Gem aggregerede metrikker
     df = pd.DataFrame(aggregate_records)
     df.to_csv(output_file, index=False)
@@ -161,7 +165,6 @@ def run_experiments(n_workers: int = None, n_replications: int = N_REPLICATIONS,
 
     # Gem daglige kølængder (til Fig. 5 og 6)
     # Filnavn afledes af output_file: results.csv → daily_queue_lengths.csv
-    from pathlib import Path
     out_path = Path(output_file)
     daily_file = out_path.with_name(
         out_path.stem.replace("results", "daily_queue_lengths") + out_path.suffix
@@ -244,8 +247,8 @@ if __name__ == "__main__":
                         help="Antal replikationer pr. betingelse (default: 100)")
     parser.add_argument("--days", type=int, default=D_END,
                         help="Antal dage pr. simulering (default: 365)")
-    parser.add_argument("--output", type=str, default="results.csv",
-                        help="Output CSV-fil (default: results.csv)")
+    parser.add_argument("--output", type=str, default="results/results.csv",
+                        help="Output CSV-fil (default: results/results.csv)")
 
     args = parser.parse_args()
 
