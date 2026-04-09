@@ -1,0 +1,11 @@
+{
+  "scaling_factor": 0.9285831276527154,
+  "beta_z": 0.284912109375,
+  "baseline_var": 0.2198081186778235,
+  "new_var": 0.25491896858200797,
+  "rescaled_coef": -0.08812253881424269,
+  "hard_mode_var": 0.2503737683703862,
+  "soft_mode_var": 0.33442239715067384,
+  "target_correlation": 0.5,
+  "achieved_correlation": 0.5002936421531484
+}
