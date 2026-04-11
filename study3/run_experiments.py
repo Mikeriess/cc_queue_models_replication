@@ -140,7 +140,7 @@ def run_experiments(n_workers: int = None,
 
     # Gem daglige kølængder
     out_path = Path(output_file)
-    daily_file = out_path.with_name("daily_queue_lengths.csv")
+    daily_file = out_path.with_name("daily_queue_lengths.csv.gz")
     daily_df = pd.DataFrame(daily_records)
     daily_df.to_csv(daily_file, index=False)
     print(f"Daglige kølængder gemt i: {daily_file}")

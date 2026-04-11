@@ -3,7 +3,7 @@ JSR_NPS_Paper.pdf
 *.pyc
 __pycache__/
 
-# Ekskludér store tidsserie-filer (kan regenereres via docker compose)
+# Ukomprimerede daglige kølængder (erstattet af .csv.gz versioner)
 study2/results/daily_queue_lengths.csv
 study3/results/daily_queue_lengths.csv
 

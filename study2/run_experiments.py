@@ -164,10 +164,10 @@ def run_experiments(n_workers: int = None, n_replications: int = N_REPLICATIONS,
     print(f"\nAggregerede resultater gemt i: {output_file}")
 
     # Gem daglige kølængder (til Fig. 5 og 6)
-    # Filnavn afledes af output_file: results.csv → daily_queue_lengths.csv
+    # Filnavn afledes af output_file: results.csv → daily_queue_lengths.csv.gz
     out_path = Path(output_file)
     daily_file = out_path.with_name(
-        out_path.stem.replace("results", "daily_queue_lengths") + out_path.suffix
+        out_path.stem.replace("results", "daily_queue_lengths") + ".csv.gz"
     )
     if daily_file.name == out_path.name:  # fallback hvis replace ikke virkede
         daily_file = out_path.with_stem(out_path.stem + "_daily")

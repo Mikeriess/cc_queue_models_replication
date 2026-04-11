@@ -32,7 +32,13 @@ RESULTS_DIR = SCRIPT_DIR / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 CSV_PATH = RESULTS_DIR / "results.csv"
-DAILY_PATH = RESULTS_DIR / "daily_queue_lengths.csv"
+DAILY_PATH = RESULTS_DIR / "daily_queue_lengths.csv.gz"
+
+# Fallback til ukomprimeret version hvis komprimeret ikke findes
+if not DAILY_PATH.exists():
+    _uncompressed = RESULTS_DIR / "daily_queue_lengths.csv"
+    if _uncompressed.exists():
+        DAILY_PATH = _uncompressed
 
 # Fallback til gamle filnavne hvis de nye ikke findes
 if not CSV_PATH.exists():
