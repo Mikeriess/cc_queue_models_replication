@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interaktiv kø-simulator</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #fff;
+  color: #333;
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+h1 { font-size: 1.6em; margin-bottom: 4px; }
+h2 { font-size: 1.1em; margin-bottom: 8px; color: #555; }
+.subtitle { color: #777; font-size: 0.95em; margin-bottom: 20px; }
+.controls {
+  display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
+  padding: 16px; background: #f8f8f8; border-radius: 8px; margin-bottom: 20px;
+}
+.control-group { display: flex; flex-direction: column; gap: 4px; }
+.control-group label { font-size: 0.85em; font-weight: 600; color: #555; }
+.radio-group { display: flex; gap: 12px; }
+.radio-group label {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 0.9em; cursor: pointer; padding: 4px 8px;
+  border-radius: 4px; transition: background 0.2s;
+}
+.radio-group label:hover { background: #eee; }
+.radio-group input[type="radio"] { cursor: pointer; }
+.radio-nps { color: #d62728; font-weight: 600; }
+.radio-lrtf { color: #2ca02c; font-weight: 600; }
+.radio-fcfs { color: #ff7f0e; font-weight: 600; }
+input[type="range"] { width: 120px; cursor: pointer; }
+button {
+  padding: 8px 16px; border: none; border-radius: 6px;
+  cursor: pointer; font-size: 0.9em; font-weight: 600;
+  transition: opacity 0.2s;
+}
+button:hover { opacity: 0.85; }
+.btn-primary { background: #1f77b4; color: #fff; }
+.btn-step { background: #555; color: #fff; }
+.sim-area {
+  display: flex; gap: 24px; margin-bottom: 20px;
+}
+.queue-panel, .agent-panel {
+  border: 2px solid #ddd; border-radius: 8px; padding: 16px;
+  min-height: 400px;
+}
+.queue-panel { flex: 2; }
+.agent-panel { flex: 1; }
+.panel-title {
+  font-size: 1em; font-weight: 700; margin-bottom: 12px;
+  padding-bottom: 8px; border-bottom: 1px solid #eee;
+}
+.case-item {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px; padding: 6px 8px; border-radius: 6px;
+  font-size: 0.82em; background: #fafafa; border: 1px solid #eee;
+  transition: all 0.3s;
+}
+.case-bar {
+  height: 18px; border-radius: 3px; min-width: 4px;
+  transition: width 0.3s;
+}
+.case-label { white-space: nowrap; font-weight: 600; min-width: 36px; }
+.case-info { font-size: 0.8em; color: #666; white-space: nowrap; }
+.nps-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 10px;
+  font-weight: 700; font-size: 0.8em; color: #fff; min-width: 28px;
+  text-align: center;
+}
+.promoter { background: #2ca02c; }
+.passive { background: #f0c040; color: #333; }
+.detractor { background: #d62728; }
+.agent-slot {
+  border: 2px dashed #ccc; border-radius: 8px; padding: 12px;
+  margin-bottom: 8px; min-height: 60px; text-align: center;
+  color: #aaa; font-size: 0.85em;
+  transition: all 0.3s;
+}
+.agent-slot.active {
+  border-color: #1f77b4; border-style: solid; background: #f0f7ff;
+  color: #333;
+}
+.stats-bar {
+  background: #f8f8f8; border-radius: 8px; padding: 16px;
+  display: flex; gap: 24px; align-items: center; margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.stat-item { text-align: center; }
+.stat-value { font-size: 1.4em; font-weight: 700; }
+.stat-label { font-size: 0.8em; color: #777; }
+.insight-box {
+  background: #fffde7; border-left: 4px solid #f0c040;
+  padding: 16px; border-radius: 0 8px 8px 0;
+  font-size: 0.9em; line-height: 1.6;
+}
+.insight-box strong { color: #d62728; }
+.served-list { margin-top: 12px; }
+.served-list .case-item { opacity: 0.6; }
+</style>
+</head>
+<body>
+<h1>Interaktiv kø-simulator</h1>
+<p class="subtitle">Udforsk hvordan forskellige scheduling-discipliner pavirker servicerækkefølge og NPS-resultater</p>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Scheduling-disciplin:</label>
+    <div class="radio-group">
+      <label class="radio-fcfs"><input type="radio" name="discipline" value="FCFS" checked> FCFS</label>
+      <label class="radio-lrtf"><input type="radio" name="discipline" value="LRTF"> LRTF</label>
+      <label class="radio-nps"><input type="radio" name="discipline" value="NPS"> NPS</label>
+    </div>
+  </div>
+  <div class="control-group">
+    <label>Antal agenter: <span id="agentCountLabel">3</span></label>
+    <input type="range" id="agentSlider" min="1" max="5" value="3">
+  </div>
+  <button class="btn-primary" id="generateBtn">Generer sager</button>
+  <button class="btn-step" id="stepBtn">Step &rarr;</button>
+  <button class="btn-step" id="resetBtn" style="background:#999;">Nulstil</button>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-value" id="statServed">0</div>
+    <div class="stat-label">Sager behandlet</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="statQueue">0</div>
+    <div class="stat-label">I køen</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="statAvgNps">—</div>
+    <div class="stat-label">Gns. NPS (behandlede)</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="statDiscipline">FCFS</div>
+    <div class="stat-label">Aktiv disciplin</div>
+  </div>
+</div>
+
+<div class="sim-area">
+  <div class="queue-panel">
+    <div class="panel-title">Kø (ventende sager)</div>
+    <div id="queueDisplay"></div>
+  </div>
+  <div class="agent-panel">
+    <div class="panel-title">Agenter</div>
+    <div id="agentDisplay"></div>
+    <div class="served-list">
+      <div class="panel-title" style="margin-top:16px;">Færdige sager</div>
+      <div id="servedDisplay"></div>
+    </div>
+  </div>
+</div>
+
+<div class="insight-box">
+  <strong>Bemærk:</strong> NPS-disciplinen og LRTF producerer den <strong>SAMME</strong> rækkefølge!
+  Dette skyldes at NPS-prædiktionen er en monoton funktion af throughput-tid:<br>
+  <code>predicted_nps = 10.22 - 0.0949 &times; log(throughput + 1) - 1</code><br>
+  Da <code>log</code> er monotont stigende, vil højere throughput altid give lavere NPS.
+  At sortere efter laveste NPS (værst først) er derfor identisk med at sortere efter længst throughput (LRTF).
+</div>
+
+<script>
+(function() {
+  let cases = [];
+  let queue = [];
+  let agents = [];
+  let served = [];
+  let numAgents = 3;
+
+  const agentSlider = document.getElementById('agentSlider');
+  const agentCountLabel = document.getElementById('agentCountLabel');
+  const generateBtn = document.getElementById('generateBtn');
+  const stepBtn = document.getElementById('stepBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  function getDiscipline() {
+    return document.querySelector('input[name="discipline"]:checked').value;
+  }
+
+  function predictNps(pt) {
+    return 10.22 - 0.0949 * Math.log(pt + 1) - 1;
+  }
+
+  function npsCategory(nps) {
+    if (nps >= 9) return 'promoter';
+    if (nps >= 7) return 'passive';
+    return 'detractor';
+  }
+
+  function seededRandom(seed) {
+    let s = seed;
+    return function() {
+      s = (s * 1664525 + 1013904223) & 0xffffffff;
+      return (s >>> 0) / 0xffffffff;
+    };
+  }
+
+  function generateCases() {
+    const rng = seededRandom(Date.now());
+    const n = 15 + Math.floor(rng() * 6);
+    cases = [];
+    let t = 0;
+    for (let i = 0; i < n; i++) {
+      t += 1 + Math.floor(rng() * 5);
+      const pt = 100 + Math.floor(rng() * 1900);
+      const nps = predictNps(pt);
+      cases.push({
+        id: i + 1,
+        arrival: t,
+        throughput: pt,
+        nps: nps,
+        category: npsCategory(nps)
+      });
+    }
+    queue = cases.map(c => ({...c}));
+    agents = [];
+    served = [];
+    for (let i = 0; i < numAgents; i++) {
+      agents.push({ id: i + 1, current: null });
+    }
+    sortQueue();
+    render();
+  }
+
+  function sortQueue() {
+    const disc = getDiscipline();
+    if (disc === 'FCFS') {
+      queue.sort((a, b) => a.arrival - b.arrival);
+    } else if (disc === 'LRTF') {
+      queue.sort((a, b) => b.throughput - a.throughput);
+    } else {
+      queue.sort((a, b) => a.nps - b.nps);
+    }
+  }
+
+  function step() {
+    // Move finished cases from agents to served
+    for (let ag of agents) {
+      if (ag.current) {
+        served.push(ag.current);
+        ag.current = null;
+      }
+    }
+    // Assign from queue to idle agents
+    for (let ag of agents) {
+      if (!ag.current && queue.length > 0) {
+        ag.current = queue.shift();
+      }
+    }
+    render();
+  }
+
+  function resetSim() {
+    if (cases.length === 0) return;
+    queue = cases.map(c => ({...c}));
+    agents = [];
+    served = [];
+    for (let i = 0; i < numAgents; i++) {
+      agents.push({ id: i + 1, current: null });
+    }
+    sortQueue();
+    render();
+  }
+
+  function renderCase(c, maxPt) {
+    const barWidth = Math.max(8, (c.throughput / maxPt) * 180);
+    const catClass = c.category;
+    const catColor = catClass === 'promoter' ? '#2ca02c' : catClass === 'passive' ? '#f0c040' : '#d62728';
+    return `<div class="case-item">
+      <span class="case-label">#${c.id}</span>
+      <div class="case-bar" style="width:${barWidth}px; background:${catColor};"></div>
+      <span class="nps-badge ${catClass}">${c.nps.toFixed(1)}</span>
+      <span class="case-info">PT: ${c.throughput} min</span>
+    </div>`;
+  }
+
+  function render() {
+    const maxPt = Math.max(1, ...cases.map(c => c.throughput));
+    const disc = getDiscipline();
+
+    // Queue
+    const queueEl = document.getElementById('queueDisplay');
+    if (queue.length === 0) {
+      queueEl.innerHTML = '<div style="color:#aaa;padding:20px;text-align:center;">Køen er tom</div>';
+    } else {
+      queueEl.innerHTML = queue.map(c => renderCase(c, maxPt)).join('');
+    }
+
+    // Agents
+    const agentEl = document.getElementById('agentDisplay');
+    agentEl.innerHTML = agents.map(ag => {
+      if (ag.current) {
+        return `<div class="agent-slot active">
+          <strong>Agent ${ag.id}</strong><br>
+          ${renderCase(ag.current, maxPt)}
+        </div>`;
+      }
+      return `<div class="agent-slot">Agent ${ag.id} — ledig</div>`;
+    }).join('');
+
+    // Served
+    const servedEl = document.getElementById('servedDisplay');
+    if (served.length === 0) {
+      servedEl.innerHTML = '<div style="color:#aaa;font-size:0.85em;">Ingen færdige endnu</div>';
+    } else {
+      servedEl.innerHTML = served.map(c => renderCase(c, maxPt)).join('');
+    }
+
+    // Stats
+    document.getElementById('statServed').textContent = served.length;
+    document.getElementById('statQueue').textContent = queue.length;
+    document.getElementById('statDiscipline').style.color =
+      disc === 'NPS' ? '#d62728' : disc === 'LRTF' ? '#2ca02c' : '#ff7f0e';
+    document.getElementById('statDiscipline').textContent = disc;
+
+    if (served.length > 0) {
+      const avg = served.reduce((s, c) => s + c.nps, 0) / served.length;
+      document.getElementById('statAvgNps').textContent = avg.toFixed(2);
+    } else {
+      document.getElementById('statAvgNps').textContent = '—';
+    }
+  }
+
+  agentSlider.addEventListener('input', function() {
+    numAgents = parseInt(this.value);
+    agentCountLabel.textContent = numAgents;
+  });
+
+  document.querySelectorAll('input[name="discipline"]').forEach(r => {
+    r.addEventListener('change', function() {
+      sortQueue();
+      render();
+    });
+  });
+
+  generateBtn.addEventListener('click', generateCases);
+  stepBtn.addEventListener('click', step);
+  resetBtn.addEventListener('click', resetSim);
+
+  // Init
+  generateCases();
+})();
+</script>
+</body>
+</html>
