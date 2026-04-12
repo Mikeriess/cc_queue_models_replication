@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monotoni-beviset — hvorfor NPS &#8801; LRTF</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #fff; color: #333; padding: 20px; max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 1.5em; margin-bottom: 4px; }
+h2 { font-size: 1.0em; margin-bottom: 6px; color: #555; }
+.subtitle { color: #777; font-size: 0.92em; margin-bottom: 18px; }
+.panels { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.panel { flex: 1; min-width: 340px; }
+.panel-title { font-weight: bold; font-size: 0.9em; margin-bottom: 4px; text-align: center; }
+canvas { border: 1px solid #ddd; border-radius: 6px; display: block; }
+.controls { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 14px; background: #f8f8f8; border-radius: 6px; }
+.control-group { display: flex; align-items: center; gap: 6px; font-size: 0.9em; }
+.control-group label { white-space: nowrap; }
+button { padding: 7px 16px; font-size: 0.9em; border: none; border-radius: 5px; cursor: pointer; font-family: inherit; background: #1f77b4; color: #fff; }
+button:hover { background: #1a6599; }
+.insight-box { background: #f0f7ff; border-left: 4px solid #1f77b4; padding: 14px 18px; border-radius: 4px; font-size: 0.88em; line-height: 1.6; margin-top: 16px; }
+.diverge-warning { background: #fff0f0; border-left: 4px solid #d62728; padding: 10px 14px; border-radius: 4px; font-size: 0.9em; margin-top: 10px; display: none; }
+.match-info { font-size: 1.0em; font-weight: bold; text-align: center; margin-top: 6px; }
+.match-info.perfect { color: #2ca02c; }
+.match-info.diverged { color: #d62728; }
+</style>
+</head>
+<body>
+
+<h1>Monotoni-beviset &mdash; hvorfor NPS &#8801; LRTF</h1>
+<p class="subtitle">Interaktiv demonstration af det centrale fund: NPS-prioritering giver altid samme rækkefølge som LRTF</p>
+
+<div class="controls">
+  <button onclick="regenerate()">Generer nye sager</button>
+  <div class="control-group">
+    <label for="nSlider">Antal sager: <span id="nVal">15</span></label>
+    <input type="range" id="nSlider" min="5" max="30" value="15" oninput="document.getElementById('nVal').textContent=this.value; regenerate();">
+  </div>
+  <div class="control-group">
+    <label for="interceptSlider">NPS intercept: <span id="interceptVal">10.2211</span></label>
+    <input type="range" id="interceptSlider" min="5.0" max="12.0" value="10.2211" step="0.05" oninput="document.getElementById('interceptVal').textContent=parseFloat(this.value).toFixed(2); regenerate();">
+  </div>
+</div>
+
+<div class="panels">
+  <div class="panel">
+    <div class="panel-title">Panel 1: NPS-prædiktionsmodellen (Eq. 9)</div>
+    <canvas id="canvas1" width="360" height="300"></canvas>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Panel 2: |NPS_hat - 7.5| (prioritetsscore)</div>
+    <canvas id="canvas2" width="360" height="300"></canvas>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Panel 3: Rangorden: NPS vs LRTF</div>
+    <canvas id="canvas3" width="360" height="300"></canvas>
+  </div>
+</div>
+
+<div id="matchInfo" class="match-info perfect">Identisk rangorden: 15/15 (100%)</div>
+
+<div id="divergeWarning" class="diverge-warning">
+  <b>Rangorden divergerer!</b> Nogle sager har forskellig placering fordi NPS_hat krydser under 7.5.
+</div>
+
+<div class="insight-box">
+  <b>Kerneindsigt:</b> Fordi NPS_hat altid er over 7.5 i den aktuelle model, er |NPS_hat - 7.5| = NPS_hat - 7.5,
+  som er en monotont aftagende funktion af throughput-tid.
+  Sort&eacute;r efter |NPS_hat - 7.5| ascending = sort&eacute;r efter throughput descending = LRTF.
+  <br><br>
+  For at NPS-prioritering skal give et andet resultat end LRTF, skal NPS-modellen producere
+  prædiktioner p&aring; <b>begge sider</b> af 7.5. Prøv at sænke intercept-slideren til under ~8 for at se dette.
+</div>
+
+<script>
+function npsHat(pt, intercept) {
+  return intercept - 0.0949 * Math.log(pt + 1) - 1;
+}
+
+function drawPanel1(intercept) {
+  const c = document.getElementById('canvas1');
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 55, padR = 15, padT = 20, padB = 45;
+  const pW = W - padL - padR, pH = H - padT - padB;
+
+  const xMin = 0, xMax = 3000;
+  const yMin = 5, yMax = 11;
+
+  function tx(v) { return padL + (v - xMin)/(xMax - xMin) * pW; }
+  function ty(v) { return padT + (yMax - v)/(yMax - yMin) * pH; }
+
+  // Grid
+  ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+  for (let y = 5; y <= 11; y++) { ctx.beginPath(); ctx.moveTo(padL, ty(y)); ctx.lineTo(W-padR, ty(y)); ctx.stroke(); }
+  for (let x = 0; x <= 3000; x += 500) { ctx.beginPath(); ctx.moveTo(tx(x), padT); ctx.lineTo(tx(x), H-padB); ctx.stroke(); }
+
+  // Axes
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
+
+  // 7.5 line
+  ctx.setLineDash([6,4]); ctx.strokeStyle = '#999'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, ty(7.5)); ctx.lineTo(W-padR, ty(7.5)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#999'; ctx.font = '11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('NPS = 7.5', W-padR-55, ty(7.5)-5);
+
+  // Shade region where NPS_hat > 7.5
+  ctx.fillStyle = 'rgba(44,160,44,0.08)';
+  ctx.beginPath();
+  ctx.moveTo(tx(0), ty(Math.max(yMin, Math.min(yMax, npsHat(0, intercept)))));
+  for (let x = 0; x <= 3000; x += 10) {
+    const y = npsHat(x, intercept);
+    if (y > 7.5) {
+      ctx.lineTo(tx(x), ty(Math.min(yMax, y)));
+    }
+  }
+  // Find crossing point
+  let crossX = -1;
+  for (let x = 0; x <= 3000; x += 1) {
+    if (npsHat(x, intercept) <= 7.5) { crossX = x; break; }
+  }
+  if (crossX > 0) {
+    ctx.lineTo(tx(crossX), ty(7.5));
+    ctx.lineTo(tx(0), ty(7.5));
+  } else {
+    ctx.lineTo(tx(3000), ty(Math.max(7.5, npsHat(3000, intercept))));
+    ctx.lineTo(tx(3000), ty(7.5));
+    ctx.lineTo(tx(0), ty(7.5));
+  }
+  ctx.closePath(); ctx.fill();
+
+  // Curve
+  ctx.strokeStyle = '#d62728'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let x = 0; x <= 3000; x += 5) {
+    const y = npsHat(x, intercept);
+    const py = ty(Math.max(yMin, Math.min(yMax, y)));
+    if (x === 0) ctx.moveTo(tx(x), py); else ctx.lineTo(tx(x), py);
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#333'; ctx.font = '11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('predicted_throughput (min)', W/2, H-6);
+  ctx.save(); ctx.translate(14, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('NPS_hat', 0, 0); ctx.restore();
+
+  // Axis ticks
+  ctx.font = '10px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  for (let x = 0; x <= 3000; x += 500) ctx.fillText(x, tx(x), H-padB+14);
+  ctx.textAlign = 'right';
+  for (let y = 5; y <= 11; y++) ctx.fillText(y, padL-5, ty(y)+4);
+
+  // Label
+  ctx.fillStyle = '#d62728'; ctx.font = 'bold 11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Monotont aftagende', padL + 10, padT + 15);
+}
+
+function drawPanel2(intercept) {
+  const c = document.getElementById('canvas2');
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 55, padR = 15, padT = 20, padB = 45;
+  const pW = W - padL - padR, pH = H - padT - padB;
+
+  const xMin = 0, xMax = 3000;
+  const yMin = 0, yMax = 3;
+
+  function tx(v) { return padL + (v - xMin)/(xMax - xMin) * pW; }
+  function ty(v) { return padT + (yMax - v)/(yMax - yMin) * pH; }
+
+  // Grid
+  ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+  for (let y = 0; y <= 3; y += 0.5) { ctx.beginPath(); ctx.moveTo(padL, ty(y)); ctx.lineTo(W-padR, ty(y)); ctx.stroke(); }
+  for (let x = 0; x <= 3000; x += 500) { ctx.beginPath(); ctx.moveTo(tx(x), padT); ctx.lineTo(tx(x), H-padB); ctx.stroke(); }
+
+  // Axes
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
+
+  // Curve: |npsHat - 7.5|
+  ctx.strokeStyle = '#1f77b4'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let isMonotone = true;
+  let prevVal = null;
+  for (let x = 0; x <= 3000; x += 5) {
+    const y = Math.abs(npsHat(x, intercept) - 7.5);
+    const py = ty(Math.max(yMin, Math.min(yMax, y)));
+    if (x === 0) ctx.moveTo(tx(x), py); else ctx.lineTo(tx(x), py);
+    if (prevVal !== null && y > prevVal + 0.001) isMonotone = false;
+    prevVal = y;
+  }
+  ctx.stroke();
+
+  // Check if non-monotone (has V shape)
+  let hasV = false;
+  for (let x = 0; x <= 3000; x += 10) {
+    if (npsHat(x, intercept) < 7.5) { hasV = true; break; }
+  }
+
+  // Labels
+  ctx.fillStyle = '#333'; ctx.font = '11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('predicted_throughput (min)', W/2, H-6);
+  ctx.save(); ctx.translate(14, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('|NPS_hat - 7.5|', 0, 0); ctx.restore();
+
+  ctx.font = '10px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  for (let x = 0; x <= 3000; x += 500) ctx.fillText(x, tx(x), H-padB+14);
+  ctx.textAlign = 'right';
+  for (let y = 0; y <= 3; y += 0.5) ctx.fillText(y.toFixed(1), padL-5, ty(y)+4);
+
+  ctx.font = 'bold 11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'left';
+  if (hasV) {
+    ctx.fillStyle = '#d62728';
+    ctx.fillText('Ikke-monoton! (V-form)', padL+10, padT+15);
+  } else {
+    ctx.fillStyle = '#2ca02c';
+    ctx.fillText('Prioritetsscore er også monoton!', padL+10, padT+15);
+  }
+}
+
+function drawPanel3(intercept, N) {
+  const c = document.getElementById('canvas3');
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Generate cases
+  const cases = [];
+  for (let i = 0; i < N; i++) {
+    const pt = Math.random() * 2900 + 10;
+    const nps = npsHat(pt, intercept);
+    const priority = Math.abs(nps - 7.5);
+    cases.push({id: i, pt, nps, priority});
+  }
+
+  // LRTF order: sort by pt descending
+  const lrtfOrder = [...cases].sort((a,b) => b.pt - a.pt);
+  // NPS order: sort by |nps-7.5| ascending (lowest priority score = most urgent)
+  const npsOrder = [...cases].sort((a,b) => a.priority - b.priority);
+
+  // Check match
+  let matchCount = 0;
+  for (let i = 0; i < N; i++) {
+    if (lrtfOrder[i].id === npsOrder[i].id) matchCount++;
+  }
+
+  const padL = 15, padR = 15, padT = 30, padB = 20;
+  const colW = (W - padL - padR - 30) / 2;
+  const barH = Math.min((H - padT - padB) / N, 18);
+
+  // Color scale
+  function caseColor(c) {
+    return c.nps >= 7.5 ? '#2ca02c' : '#d62728';
+  }
+
+  // Headers
+  ctx.fillStyle = '#333'; ctx.font = 'bold 11px Segoe UI, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('LRTF rækkefølge', padL + colW/2, padT - 8);
+  ctx.fillText('NPS rækkefølge', padL + colW + 30 + colW/2, padT - 8);
+
+  // Draw bars
+  for (let i = 0; i < N; i++) {
+    const lc = lrtfOrder[i];
+    const nc = npsOrder[i];
+    const isMatch = lc.id === nc.id;
+
+    const y = padT + i * barH;
+
+    // LRTF bar
+    const lw = (lc.pt / 3000) * (colW - 40);
+    ctx.fillStyle = isMatch ? caseColor(lc) : '#d62728';
+    ctx.globalAlpha = isMatch ? 0.7 : 0.4;
+    ctx.fillRect(padL, y, lw, barH - 2);
+    ctx.globalAlpha = 1;
+    if (!isMatch) {
+      ctx.strokeStyle = '#d62728'; ctx.lineWidth = 2;
+      ctx.strokeRect(padL, y, lw, barH - 2);
+    }
+    ctx.fillStyle = '#333'; ctx.font = '9px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(Math.round(lc.pt), padL + lw + 3, y + barH/2 + 3);
+
+    // NPS bar
+    const nw = (nc.pt / 3000) * (colW - 40);
+    const nx = padL + colW + 30;
+    ctx.fillStyle = isMatch ? caseColor(nc) : '#d62728';
+    ctx.globalAlpha = isMatch ? 0.7 : 0.4;
+    ctx.fillRect(nx, y, nw, barH - 2);
+    ctx.globalAlpha = 1;
+    if (!isMatch) {
+      ctx.strokeStyle = '#d62728'; ctx.lineWidth = 2;
+      ctx.strokeRect(nx, y, nw, barH - 2);
+    }
+    ctx.fillStyle = '#333'; ctx.textAlign = 'left';
+    ctx.fillText(Math.round(nc.pt), nx + nw + 3, y + barH/2 + 3);
+  }
+
+  // Match info
+  const el = document.getElementById('matchInfo');
+  const pct = (matchCount / N * 100).toFixed(0);
+  if (matchCount === N) {
+    el.textContent = `Identisk rangorden: ${matchCount}/${N} (${pct}%)`;
+    el.className = 'match-info perfect';
+    document.getElementById('divergeWarning').style.display = 'none';
+  } else {
+    el.textContent = `Rangorden divergerer! ${matchCount}/${N} sager har samme placering.`;
+    el.className = 'match-info diverged';
+    const warn = document.getElementById('divergeWarning');
+    warn.style.display = 'block';
+    warn.innerHTML = `<b>Rangorden divergerer!</b> ${N - matchCount}/${N} sager har forskellig placering. NPS_hat krydser under 7.5, s&aring; |NPS_hat-7.5| er ikke længere monoton.`;
+  }
+}
+
+function regenerate() {
+  const N = parseInt(document.getElementById('nSlider').value);
+  const intercept = parseFloat(document.getElementById('interceptSlider').value);
+  drawPanel1(intercept);
+  drawPanel2(intercept);
+  drawPanel3(intercept, N);
+}
+
+// Initial draw
+regenerate();
+</script>
+</body>
+</html>

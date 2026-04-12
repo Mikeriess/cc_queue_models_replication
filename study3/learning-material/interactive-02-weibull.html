@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weibull-fordelingen — interaktiv udforskning</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #fff;
+  color: #333;
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+h1 { font-size: 1.6em; margin-bottom: 4px; }
+.subtitle { color: #777; font-size: 0.95em; margin-bottom: 20px; }
+.controls {
+  display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start;
+  padding: 16px; background: #f8f8f8; border-radius: 8px; margin-bottom: 20px;
+}
+.control-group { display: flex; flex-direction: column; gap: 4px; }
+.control-group label { font-size: 0.85em; font-weight: 600; color: #555; }
+.control-group .hint { font-size: 0.75em; color: #999; }
+input[type="range"] { width: 200px; cursor: pointer; }
+.derived { font-size: 0.9em; color: #1f77b4; font-weight: 600; padding: 8px 12px; background: #e8f0fe; border-radius: 6px; }
+.formula-box {
+  background: #f0f7ff; border: 1px solid #cce0ff; border-radius: 8px;
+  padding: 12px 16px; margin-bottom: 16px; font-size: 0.95em;
+  text-align: center;
+}
+.formula-box code { font-size: 1.1em; font-weight: 600; color: #1f77b4; }
+.plots {
+  display: flex; gap: 16px; margin-bottom: 20px; justify-content: center;
+  flex-wrap: wrap;
+}
+.plot-container { text-align: center; }
+.plot-container .plot-title { font-size: 0.9em; font-weight: 700; margin-bottom: 6px; }
+canvas { border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }
+.tabs {
+  display: flex; gap: 0; margin-bottom: 0;
+}
+.tab {
+  padding: 10px 20px; cursor: pointer; border: 1px solid #ddd;
+  background: #f0f0f0; font-size: 0.9em; font-weight: 600;
+  border-bottom: none; border-radius: 8px 8px 0 0;
+  transition: background 0.2s;
+}
+.tab.active { background: #fff; border-bottom: 1px solid #fff; margin-bottom: -1px; position: relative; z-index: 1; }
+.tab-content {
+  border: 1px solid #ddd; border-radius: 0 8px 8px 8px;
+  padding: 16px; margin-bottom: 20px; min-height: 120px;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+button {
+  padding: 8px 16px; border: none; border-radius: 6px;
+  cursor: pointer; font-size: 0.9em; font-weight: 600;
+  background: #1f77b4; color: #fff; transition: opacity 0.2s;
+}
+button:hover { opacity: 0.85; }
+.sample-result {
+  margin-top: 12px; font-size: 0.85em; color: #555;
+  line-height: 1.6;
+}
+.hardz-controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.cases-table { margin-top: 12px; }
+.cases-table table {
+  border-collapse: collapse; font-size: 0.82em; width: 100%;
+}
+.cases-table th, .cases-table td {
+  border: 1px solid #ddd; padding: 4px 8px; text-align: center;
+}
+.cases-table th { background: #f0f0f0; font-weight: 600; }
+.explanation {
+  background: #fffde7; border-left: 4px solid #f0c040;
+  padding: 16px; border-radius: 0 8px 8px 0;
+  font-size: 0.9em; line-height: 1.6;
+}
+</style>
+</head>
+<body>
+<h1>Weibull-fordelingen — interaktiv udforskning</h1>
+<p class="subtitle">Udforsk hvordan Weibull-parametre pavirker fordelingen af sagsvarigheder</p>
+
+<div class="formula-box">
+  <code>duration = scale &times; (&minus;log(1 &minus; u))<sup>&theta;</sup></code>
+</div>
+
+<div class="controls">
+  <div class="control-group">
+    <label>&theta; (theta): <span id="thetaVal">0.3908</span></label>
+    <input type="range" id="thetaSlider" min="0.1" max="1.0" step="0.01" value="0.3908">
+    <div class="hint">Study 3: &theta; = 0.3908</div>
+  </div>
+  <div class="control-group">
+    <label>scale: <span id="scaleVal">5.28</span></label>
+    <input type="range" id="scaleSlider" min="1" max="20" step="0.5" value="5.5">
+    <div class="hint">Study 3: scale = exp(1.6645) &approx; 5.28</div>
+  </div>
+  <div class="derived" id="derivedShape">shape = 1/&theta; = 2.558</div>
+</div>
+
+<div class="plots">
+  <div class="plot-container">
+    <div class="plot-title">PDF — Sandsynlighedstæthed</div>
+    <canvas id="pdfCanvas" width="420" height="300"></canvas>
+  </div>
+  <div class="plot-container">
+    <div class="plot-title">CDF — Kumulativ fordeling</div>
+    <canvas id="cdfCanvas" width="420" height="300"></canvas>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="sampling">Tilfældig sampling</div>
+  <div class="tab" data-tab="hardz">Fast percentil (Hard Z)</div>
+</div>
+<div class="tab-content">
+  <div class="tab-panel active" id="panel-sampling">
+    <button id="sampleBtn">Træk 100 samples</button>
+    <div class="sample-result" id="sampleResult"></div>
+  </div>
+  <div class="tab-panel" id="panel-hardz">
+    <div class="hardz-controls">
+      <div class="control-group">
+        <label>u_actual: <span id="uActualVal">0.50</span></label>
+        <input type="range" id="uActualSlider" min="0.01" max="0.99" step="0.01" value="0.50">
+      </div>
+      <button id="showCasesBtn">Vis 5 sagers varigheder</button>
+    </div>
+    <div id="hardZAnnotation" style="margin-top:8px;font-size:0.9em;color:#1f77b4;font-weight:600;"></div>
+    <div class="cases-table" id="hardZCases"></div>
+  </div>
+</div>
+
+<div class="explanation" style="margin-top:20px;">
+  I Study 3's "hard Z" mode bruges <strong>u_actual = &Phi;(Z_actual)</strong> som fast percentil.
+  En sag med høj Z_actual (kompleks) far u_actual tæt på 1, og dermed konsistent lange varigheder.
+  Alle aktiviteter i en sag far præcis den samme varighed bestemt af denne ene percentil.
+</div>
+
+<script>
+(function() {
+  const pdfCanvas = document.getElementById('pdfCanvas');
+  const cdfCanvas = document.getElementById('cdfCanvas');
+  const pdfCtx = pdfCanvas.getContext('2d');
+  const cdfCtx = cdfCanvas.getContext('2d');
+
+  const thetaSlider = document.getElementById('thetaSlider');
+  const scaleSlider = document.getElementById('scaleSlider');
+  const thetaVal = document.getElementById('thetaVal');
+  const scaleVal = document.getElementById('scaleVal');
+  const derivedShape = document.getElementById('derivedShape');
+
+  let samples = [];
+  let hardZLine = null;
+
+  function getTheta() { return parseFloat(thetaSlider.value); }
+  function getScale() { return parseFloat(scaleSlider.value); }
+
+  // Weibull PDF: (shape/scale)*(x/scale)^(shape-1)*exp(-(x/scale)^shape)
+  function weibullPDF(x, shape, scale) {
+    if (x <= 0) return 0;
+    const z = x / scale;
+    return (shape / scale) * Math.pow(z, shape - 1) * Math.exp(-Math.pow(z, shape));
+  }
+
+  // Weibull CDF: 1 - exp(-(x/scale)^shape)
+  function weibullCDF(x, shape, scale) {
+    if (x <= 0) return 0;
+    return 1 - Math.exp(-Math.pow(x / scale, shape));
+  }
+
+  // Inverse CDF (quantile): scale * (-log(1-u))^(1/shape) = scale * (-log(1-u))^theta
+  function weibullQuantile(u, theta, scale) {
+    return scale * Math.pow(-Math.log(1 - u), theta);
+  }
+
+  function drawPlot(ctx, canvas, xMax, yMax, drawFn, ylabel, showSamples) {
+    const W = canvas.width, H = canvas.height;
+    const pad = { left: 55, right: 15, top: 15, bottom: 40 };
+    const pw = W - pad.left - pad.right;
+    const ph = H - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = '#eee';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const x = pad.left + (i / 5) * pw;
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ph); ctx.stroke();
+      const y = pad.top + (i / 5) * ph;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + pw, y); ctx.stroke();
+    }
+
+    // Axes
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, pad.top + ph); ctx.lineTo(pad.left + pw, pad.top + ph); ctx.stroke();
+
+    // X labels
+    ctx.fillStyle = '#666'; ctx.font = '11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+    for (let i = 0; i <= 5; i++) {
+      const val = (i / 5) * xMax;
+      ctx.fillText(val.toFixed(0), pad.left + (i / 5) * pw, pad.top + ph + 18);
+    }
+    ctx.fillText('timer', pad.left + pw / 2, pad.top + ph + 34);
+
+    // Y labels
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+      const val = (1 - i / 4) * yMax;
+      const y = pad.top + (i / 4) * ph;
+      ctx.fillText(val.toFixed(yMax >= 1 ? 1 : 3), pad.left - 8, y + 4);
+    }
+
+    // Histogram of samples (if PDF plot)
+    if (showSamples && samples.length > 0) {
+      const nBins = 40;
+      const bins = new Array(nBins).fill(0);
+      for (const s of samples) {
+        const bin = Math.floor((s / xMax) * nBins);
+        if (bin >= 0 && bin < nBins) bins[bin]++;
+      }
+      const binW = pw / nBins;
+      const maxBin = Math.max(...bins);
+      ctx.fillStyle = 'rgba(31,119,180,0.3)';
+      ctx.strokeStyle = 'rgba(31,119,180,0.5)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < nBins; i++) {
+        if (bins[i] === 0) continue;
+        // Scale histogram so max bin height = yMax area
+        const density = (bins[i] / samples.length) / (xMax / nBins);
+        const barH = (density / yMax) * ph;
+        const x = pad.left + i * binW;
+        const y = pad.top + ph - barH;
+        ctx.fillRect(x, y, binW, barH);
+        ctx.strokeRect(x, y, binW, barH);
+      }
+    }
+
+    // Main curve
+    ctx.strokeStyle = '#d62728'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    const steps = 400;
+    for (let i = 0; i <= steps; i++) {
+      const x = (i / steps) * xMax;
+      const y = drawFn(x);
+      const px = pad.left + (i / steps) * pw;
+      const py = pad.top + ph - (y / yMax) * ph;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // Hard Z line
+    if (hardZLine !== null) {
+      const dur = hardZLine;
+      if (dur <= xMax) {
+        const px = pad.left + (dur / xMax) * pw;
+        ctx.strokeStyle = '#2ca02c'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(px, pad.top); ctx.lineTo(px, pad.top + ph); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#2ca02c'; ctx.font = 'bold 11px Segoe UI, system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(dur.toFixed(1) + 't', px + 4, pad.top + 16);
+      }
+    }
+  }
+
+  function updatePlots() {
+    const theta = getTheta();
+    const scale = getScale();
+    const shape = 1 / theta;
+
+    thetaVal.textContent = theta.toFixed(4);
+    scaleVal.textContent = scale.toFixed(2);
+    derivedShape.innerHTML = `shape = 1/&theta; = ${shape.toFixed(3)}`;
+
+    const xMax = 50;
+
+    // Compute PDF yMax
+    let pdfMax = 0;
+    for (let i = 1; i <= 500; i++) {
+      const x = (i / 500) * xMax;
+      pdfMax = Math.max(pdfMax, weibullPDF(x, shape, scale));
+    }
+    pdfMax = Math.ceil(pdfMax * 20) / 20 + 0.01;
+
+    drawPlot(pdfCtx, pdfCanvas, xMax, pdfMax, x => weibullPDF(x, shape, scale), 'f(x)', true);
+    drawPlot(cdfCtx, cdfCanvas, xMax, 1.0, x => weibullCDF(x, shape, scale), 'F(x)', false);
+  }
+
+  // Sampling
+  document.getElementById('sampleBtn').addEventListener('click', function() {
+    const theta = getTheta();
+    const scale = getScale();
+    samples = [];
+    for (let i = 0; i < 100; i++) {
+      const u = Math.random();
+      samples.push(weibullQuantile(u, theta, scale));
+    }
+    const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+    const sorted = [...samples].sort((a, b) => a - b);
+    document.getElementById('sampleResult').innerHTML =
+      `100 samples genereret. Gennemsnit: <strong>${mean.toFixed(2)} timer</strong>, ` +
+      `Median: <strong>${sorted[49].toFixed(2)} timer</strong>, ` +
+      `Min: ${sorted[0].toFixed(2)}, Max: ${sorted[99].toFixed(2)}`;
+    hardZLine = null;
+    updatePlots();
+  });
+
+  // Hard Z
+  const uActualSlider = document.getElementById('uActualSlider');
+  const uActualVal = document.getElementById('uActualVal');
+
+  function updateHardZ() {
+    const u = parseFloat(uActualSlider.value);
+    const theta = getTheta();
+    const scale = getScale();
+    uActualVal.textContent = u.toFixed(2);
+    const dur = weibullQuantile(u, theta, scale);
+    hardZLine = dur;
+    document.getElementById('hardZAnnotation').innerHTML =
+      `Ved u_actual = ${u.toFixed(2)}, er varigheder altid <strong>${dur.toFixed(2)} timer</strong>`;
+    samples = [];
+    updatePlots();
+  }
+
+  uActualSlider.addEventListener('input', updateHardZ);
+
+  document.getElementById('showCasesBtn').addEventListener('click', function() {
+    const u = parseFloat(uActualSlider.value);
+    const theta = getTheta();
+    const scale = getScale();
+    const dur = weibullQuantile(u, theta, scale);
+    const activities = ['Vurdering', 'Behandling', 'Opfølgning', 'Dokumentation', 'Afslutning'];
+    let html = '<table><tr><th>Sag</th><th>Aktivitet</th><th>u_actual</th><th>Varighed (timer)</th></tr>';
+    for (let i = 0; i < 5; i++) {
+      html += `<tr><td>Sag ${i + 1}</td><td>${activities[i]}</td><td>${u.toFixed(2)}</td><td><strong>${dur.toFixed(2)}</strong></td></tr>`;
+    }
+    html += '</table>';
+    html += `<div style="margin-top:8px;font-size:0.85em;color:#666;">Alle 5 sager har præcis samme varighed: <strong>${dur.toFixed(2)} timer</strong>, fordi u_actual er fast.</div>`;
+    document.getElementById('hardZCases').innerHTML = html;
+  });
+
+  // Tabs
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      this.classList.add('active');
+      document.getElementById('panel-' + this.dataset.tab).classList.add('active');
+      if (this.dataset.tab === 'hardz') {
+        updateHardZ();
+      } else {
+        hardZLine = null;
+        updatePlots();
+      }
+    });
+  });
+
+  thetaSlider.addEventListener('input', updatePlots);
+  scaleSlider.addEventListener('input', updatePlots);
+
+  // Init
+  scaleSlider.value = 5.5; // closest to exp(1.6645)=5.28 with step 0.5
+  updatePlots();
+})();
+</script>
+</body>
+</html>

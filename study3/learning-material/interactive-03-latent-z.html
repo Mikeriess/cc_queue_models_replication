@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Den latente variabel — bivariat normal og rho</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #fff;
+  color: #333;
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+h1 { font-size: 1.6em; margin-bottom: 4px; }
+.subtitle { color: #777; font-size: 0.95em; margin-bottom: 20px; }
+.controls {
+  display: flex; flex-wrap: wrap; gap: 24px; align-items: center;
+  padding: 16px; background: #f8f8f8; border-radius: 8px; margin-bottom: 20px;
+}
+.control-group { display: flex; flex-direction: column; gap: 4px; }
+.control-group label { font-size: 0.85em; font-weight: 600; color: #555; }
+input[type="range"] { width: 240px; cursor: pointer; }
+.rho-display { font-size: 1.4em; font-weight: 700; color: #1f77b4; }
+.scatter-area {
+  display: flex; gap: 0; margin-bottom: 20px; justify-content: center;
+  flex-wrap: wrap;
+}
+.scatter-col { display: flex; flex-direction: column; align-items: flex-end; }
+canvas { background: #fafafa; }
+#topHist { border: 1px solid #ddd; border-bottom: none; border-radius: 6px 6px 0 0; }
+#scatterCanvas { border: 1px solid #ddd; border-radius: 0 0 0 6px; }
+#rightHist { border: 1px solid #ddd; border-left: none; border-radius: 0 6px 6px 0; }
+.stats-bar {
+  display: flex; gap: 24px; flex-wrap: wrap;
+  padding: 12px 16px; background: #f0f7ff; border-radius: 8px; margin-bottom: 20px;
+  font-size: 0.9em;
+}
+.stats-bar .stat { display: flex; gap: 6px; align-items: center; }
+.stats-bar .stat-name { font-weight: 600; color: #555; }
+.stats-bar .stat-val { font-weight: 700; color: #1f77b4; }
+.prediction-section {
+  border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 20px;
+}
+.prediction-section h2 { font-size: 1.1em; margin-bottom: 12px; }
+table {
+  border-collapse: collapse; font-size: 0.82em; width: 100%;
+  margin-bottom: 8px;
+}
+th, td { border: 1px solid #ddd; padding: 5px 8px; text-align: center; }
+th { background: #f0f0f0; font-weight: 600; }
+.match-yes { background: #e8f5e9; }
+.match-no { background: #fff; }
+.pct-correct { font-size: 1.1em; font-weight: 700; margin-top: 8px; }
+.info-box {
+  background: #fffde7; border-left: 4px solid #f0c040;
+  padding: 16px; border-radius: 0 8px 8px 0;
+  font-size: 0.9em; line-height: 1.7;
+}
+.info-box strong { color: #d62728; }
+</style>
+</head>
+<body>
+<h1>Den latente variabel — bivariat normal og &rho;</h1>
+<p class="subtitle">Udforsk hvordan korrelation (&rho;) mellem Z_actual og Z_pred pavirker prædiktionsnøjagtighed</p>
+
+<div class="controls">
+  <div class="control-group">
+    <label>&rho; (rho) — korrelation:</label>
+    <input type="range" id="rhoSlider" min="0" max="1" step="0.01" value="0.50">
+  </div>
+  <div class="rho-display">&rho; = <span id="rhoVal">0.50</span></div>
+</div>
+
+<div class="scatter-area">
+  <div class="scatter-col">
+    <canvas id="topHist" width="500" height="80"></canvas>
+    <canvas id="scatterCanvas" width="500" height="500"></canvas>
+  </div>
+  <canvas id="rightHist" width="80" height="500"></canvas>
+</div>
+
+<div class="stats-bar" id="statsBar">
+  <div class="stat"><span class="stat-name">Corr(Z_actual, Z_pred):</span><span class="stat-val" id="corrVal">—</span></div>
+  <div class="stat"><span class="stat-name">Spearman rank korrelation:</span><span class="stat-val" id="spearmanVal">—</span></div>
+  <div class="stat"><span class="stat-name">N:</span><span class="stat-val">500</span></div>
+</div>
+
+<div class="prediction-section">
+  <h2>Prediction demo — 10 tilfældige sager</h2>
+  <div id="predTable"></div>
+  <div class="pct-correct" id="pctCorrect"></div>
+</div>
+
+<div class="info-box">
+  <p>Ved <strong>&rho; = 0</strong> er prædiktionen ren støj — rangorden er tilfældig.</p>
+  <p>Ved <strong>&rho; = 1</strong> er prædiktionen perfekt — alle sager rangeres korrekt.</p>
+  <p><strong>Bemærk</strong> at marginalfordelingerne (histogrammerne) forbliver identiske uanset &rho;!</p>
+  <p style="margin-top:8px;">Konstruktion: <code>Z_pred = &rho; &times; Z_actual + &radic;(1 &minus; &rho;&sup2;) &times; &epsilon;</code>, hvor <code>&epsilon; ~ N(0,1)</code></p>
+</div>
+
+<script>
+(function() {
+  const N = 500;
+  const scatterCanvas = document.getElementById('scatterCanvas');
+  const topHistCanvas = document.getElementById('topHist');
+  const rightHistCanvas = document.getElementById('rightHist');
+  const sCtx = scatterCanvas.getContext('2d');
+  const tCtx = topHistCanvas.getContext('2d');
+  const rCtx = rightHistCanvas.getContext('2d');
+  const rhoSlider = document.getElementById('rhoSlider');
+
+  // Seeded RNG: mulberry32
+  function mulberry32(a) {
+    return function() {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // Box-Muller with seeded RNG
+  function generateNormals(rng, n) {
+    const out = [];
+    for (let i = 0; i < n; i += 2) {
+      const u1 = rng();
+      const u2 = rng();
+      const r = Math.sqrt(-2 * Math.log(u1 || 1e-10));
+      out.push(r * Math.cos(2 * Math.PI * u2));
+      if (i + 1 < n) out.push(r * Math.sin(2 * Math.PI * u2));
+    }
+    return out.slice(0, n);
+  }
+
+  // Phi (standard normal CDF) — Abramowitz & Stegun approximation
+  function phi(z) {
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+    const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    const sign = z < 0 ? -1 : 1;
+    z = Math.abs(z) / Math.SQRT2;
+    const t = 1 / (1 + p * z);
+    const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-z * z);
+    return 0.5 * (1 + sign * y);
+  }
+
+  // Generate fixed Z_actual and epsilon using deterministic seeds
+  const rng1 = mulberry32(42);
+  const rng2 = mulberry32(137);
+  const zActual = generateNormals(rng1, N);
+  const epsilon = generateNormals(rng2, N);
+
+  let zPred = [];
+  let data = []; // {za, zp, uA, uP}
+
+  function computeData() {
+    const rho = parseFloat(rhoSlider.value);
+    const sqrtFactor = Math.sqrt(1 - rho * rho);
+    zPred = [];
+    data = [];
+    for (let i = 0; i < N; i++) {
+      const zp = rho * zActual[i] + sqrtFactor * epsilon[i];
+      zPred.push(zp);
+      data.push({
+        za: zActual[i],
+        zp: zp,
+        uA: phi(zActual[i]),
+        uP: phi(zp)
+      });
+    }
+  }
+
+  // Pearson correlation
+  function pearson(xs, ys) {
+    const n = xs.length;
+    let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (let i = 0; i < n; i++) {
+      sx += xs[i]; sy += ys[i];
+      sxx += xs[i] * xs[i]; syy += ys[i] * ys[i];
+      sxy += xs[i] * ys[i];
+    }
+    const num = n * sxy - sx * sy;
+    const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
+    return den === 0 ? 0 : num / den;
+  }
+
+  // Rank array
+  function ranks(arr) {
+    const indexed = arr.map((v, i) => ({v, i}));
+    indexed.sort((a, b) => a.v - b.v);
+    const r = new Array(arr.length);
+    for (let i = 0; i < indexed.length; i++) {
+      r[indexed[i].i] = i + 1;
+    }
+    return r;
+  }
+
+  function spearman(xs, ys) {
+    return pearson(ranks(xs), ranks(ys));
+  }
+
+  // Color from Z value (blue=low, red=high)
+  function zColor(z) {
+    const t = Math.max(0, Math.min(1, (z + 3) / 6));
+    const r = Math.round(30 + 195 * t);
+    const g = Math.round(100 - 50 * Math.abs(t - 0.5));
+    const b = Math.round(225 - 195 * t);
+    return `rgba(${r},${g},${b},0.55)`;
+  }
+
+  function drawScatter() {
+    const W = 500, H = 500;
+    const pad = { left: 50, right: 15, top: 15, bottom: 45 };
+    const pw = W - pad.left - pad.right;
+    const ph = H - pad.top - pad.bottom;
+    const range = 4; // -4 to +4
+
+    sCtx.clearRect(0, 0, W, H);
+
+    // Grid
+    sCtx.strokeStyle = '#eee'; sCtx.lineWidth = 1;
+    for (let v = -3; v <= 3; v++) {
+      const x = pad.left + ((v + range) / (2 * range)) * pw;
+      const y = pad.top + ((range - v) / (2 * range)) * ph;
+      sCtx.beginPath(); sCtx.moveTo(x, pad.top); sCtx.lineTo(x, pad.top + ph); sCtx.stroke();
+      sCtx.beginPath(); sCtx.moveTo(pad.left, y); sCtx.lineTo(pad.left + pw, y); sCtx.stroke();
+    }
+
+    // Axes
+    sCtx.strokeStyle = '#999'; sCtx.lineWidth = 1.5;
+    sCtx.beginPath(); sCtx.moveTo(pad.left, pad.top + ph); sCtx.lineTo(pad.left + pw, pad.top + ph); sCtx.stroke();
+    sCtx.beginPath(); sCtx.moveTo(pad.left, pad.top); sCtx.lineTo(pad.left, pad.top + ph); sCtx.stroke();
+
+    // Labels
+    sCtx.fillStyle = '#666'; sCtx.font = '11px Segoe UI, system-ui, sans-serif';
+    sCtx.textAlign = 'center';
+    for (let v = -3; v <= 3; v++) {
+      const x = pad.left + ((v + range) / (2 * range)) * pw;
+      sCtx.fillText(v, x, pad.top + ph + 16);
+    }
+    sCtx.fillText('Z_actual', pad.left + pw / 2, pad.top + ph + 36);
+
+    sCtx.textAlign = 'right';
+    for (let v = -3; v <= 3; v++) {
+      const y = pad.top + ((range - v) / (2 * range)) * ph;
+      sCtx.fillText(v, pad.left - 8, y + 4);
+    }
+    sCtx.save();
+    sCtx.translate(14, pad.top + ph / 2);
+    sCtx.rotate(-Math.PI / 2);
+    sCtx.textAlign = 'center';
+    sCtx.fillText('Z_pred', 0, 0);
+    sCtx.restore();
+
+    // Points
+    for (let i = 0; i < N; i++) {
+      const px = pad.left + ((data[i].za + range) / (2 * range)) * pw;
+      const py = pad.top + ((range - data[i].zp) / (2 * range)) * ph;
+      sCtx.beginPath();
+      sCtx.arc(px, py, 3, 0, 2 * Math.PI);
+      sCtx.fillStyle = zColor(data[i].za);
+      sCtx.fill();
+    }
+
+    // Diagonal reference line (y=x)
+    sCtx.strokeStyle = 'rgba(0,0,0,0.15)'; sCtx.lineWidth = 1; sCtx.setLineDash([4, 4]);
+    const x1 = pad.left + ((-range + range) / (2 * range)) * pw;
+    const y1 = pad.top + ((range - (-range)) / (2 * range)) * ph;
+    const x2 = pad.left + ((range + range) / (2 * range)) * pw;
+    const y2 = pad.top + ((range - range) / (2 * range)) * ph;
+    sCtx.beginPath(); sCtx.moveTo(x1, y1); sCtx.lineTo(x2, y2); sCtx.stroke();
+    sCtx.setLineDash([]);
+  }
+
+  function drawHistogram(ctx, canvas, values, horizontal) {
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const range = 4;
+    const nBins = 30;
+    const bins = new Array(nBins).fill(0);
+    for (const v of values) {
+      const bin = Math.floor(((v + range) / (2 * range)) * nBins);
+      if (bin >= 0 && bin < nBins) bins[bin]++;
+    }
+    const maxBin = Math.max(...bins, 1);
+
+    ctx.fillStyle = 'rgba(31,119,180,0.4)';
+    ctx.strokeStyle = 'rgba(31,119,180,0.6)';
+    ctx.lineWidth = 1;
+
+    if (horizontal) {
+      // Top histogram: x-axis matches scatter, bars go up
+      const padLeft = 50, padRight = 15;
+      const pw = W - padLeft - padRight;
+      const binW = pw / nBins;
+      for (let i = 0; i < nBins; i++) {
+        if (bins[i] === 0) continue;
+        const barH = (bins[i] / maxBin) * (H - 10);
+        const x = padLeft + i * binW;
+        ctx.fillRect(x, H - barH, binW - 1, barH);
+        ctx.strokeRect(x, H - barH, binW - 1, barH);
+      }
+    } else {
+      // Right histogram: y-axis matches scatter, bars go right
+      const padTop = 15, padBottom = 45;
+      const ph = H - padTop - padBottom;
+      const binH = ph / nBins;
+      for (let i = 0; i < nBins; i++) {
+        if (bins[i] === 0) continue;
+        const barW = (bins[i] / maxBin) * (W - 10);
+        // bin 0 = bottom (low z), bin N-1 = top (high z) — invert
+        const y = padTop + (nBins - 1 - i) * binH;
+        ctx.fillRect(0, y, barW, binH - 1);
+        ctx.strokeRect(0, y, barW, binH - 1);
+      }
+    }
+  }
+
+  function updatePredictionTable() {
+    // Pick 10 evenly spaced cases
+    const indices = [];
+    const step = Math.floor(N / 10);
+    for (let i = 0; i < 10; i++) indices.push(i * step);
+
+    const subset = indices.map(i => ({...data[i], idx: i}));
+
+    // Compute ranks within subset
+    const zaVals = subset.map(d => d.za);
+    const zpVals = subset.map(d => d.zp);
+    const rankA = ranks(zaVals);
+    const rankP = ranks(zpVals);
+
+    let matches = 0;
+    let html = '<table><tr><th>Sag #</th><th>Z_actual</th><th>u_actual=&Phi;(Z)</th><th>Faktisk rang</th><th>Z_pred</th><th>u_pred=&Phi;(Z)</th><th>Prædikteret rang</th><th>Match?</th></tr>';
+    for (let i = 0; i < 10; i++) {
+      const match = rankA[i] === rankP[i];
+      if (match) matches++;
+      html += `<tr class="${match ? 'match-yes' : 'match-no'}">
+        <td>${i + 1}</td>
+        <td>${subset[i].za.toFixed(3)}</td>
+        <td>${subset[i].uA.toFixed(3)}</td>
+        <td>${rankA[i]}</td>
+        <td>${subset[i].zp.toFixed(3)}</td>
+        <td>${subset[i].uP.toFixed(3)}</td>
+        <td>${rankP[i]}</td>
+        <td>${match ? 'Ja' : 'Nej'}</td>
+      </tr>`;
+    }
+    html += '</table>';
+    document.getElementById('predTable').innerHTML = html;
+    document.getElementById('pctCorrect').innerHTML =
+      `% korrekte rang-placeringer: <span style="color:#1f77b4;">${(matches / 10 * 100).toFixed(0)}%</span>`;
+  }
+
+  function updateAll() {
+    const rho = parseFloat(rhoSlider.value);
+    document.getElementById('rhoVal').textContent = rho.toFixed(2);
+
+    computeData();
+    drawScatter();
+    drawHistogram(tCtx, topHistCanvas, zActual, true);
+    drawHistogram(rCtx, rightHistCanvas, zPred, false);
+
+    // Stats
+    const corr = pearson(zActual, zPred);
+    const sp = spearman(zActual, zPred);
+    document.getElementById('corrVal').textContent = corr.toFixed(4);
+    document.getElementById('spearmanVal').textContent = sp.toFixed(4);
+
+    updatePredictionTable();
+  }
+
+  rhoSlider.addEventListener('input', updateAll);
+  updateAll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study 3 — Resultatudforskning</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #fff; color: #333; padding: 20px; max-width: 1000px; margin: 0 auto; }
+h1 { font-size: 1.5em; margin-bottom: 4px; }
+.subtitle { color: #777; font-size: 0.92em; margin-bottom: 18px; }
+.controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 14px; background: #f8f8f8; border-radius: 6px; }
+.control-group { display: flex; align-items: center; gap: 6px; font-size: 0.88em; }
+.control-group label { white-space: nowrap; font-weight: 600; }
+select { padding: 4px 8px; font-size: 0.9em; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+canvas { border: 1px solid #ddd; border-radius: 6px; display: block; margin-bottom: 14px; }
+table { border-collapse: collapse; font-size: 0.85em; width: 100%; margin-bottom: 14px; }
+th, td { border: 1px solid #ccc; padding: 5px 10px; text-align: center; }
+th { background: #f5f5f5; }
+.diff-row { background: #fff8e1; font-weight: bold; }
+.finding-box { background: #e8f5e9; border-left: 4px solid #2ca02c; padding: 12px 16px; border-radius: 4px; font-size: 0.88em; line-height: 1.5; margin-bottom: 14px; }
+.toggle-row { margin-bottom: 10px; }
+.toggle-row label { font-size: 0.9em; cursor: pointer; }
+input[type="checkbox"] { margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Study 3 — Resultatudforskning</h1>
+<p class="subtitle">Interaktiv udforskning af simuleringsresultater: NPS vs LRTF vs FCFS</p>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Metrik:</label>
+    <select id="selMetric" onchange="update()">
+      <option value="avg_individual_nps">Individual NPS</option>
+      <option value="organisation_nps">Organisation NPS</option>
+      <option value="avg_case_resolution_time_days">Resolution time (dage)</option>
+      <option value="avg_waiting_time_days">Ventetid (dage)</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <label>Sampling:</label>
+    <select id="selSampling" onchange="update()">
+      <option value="hard">hard</option>
+      <option value="soft">soft</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <label>Agenter:</label>
+    <select id="selAgents" onchange="update()">
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+    </select>
+  </div>
+</div>
+
+<div class="toggle-row">
+  <label><input type="checkbox" id="chkDiff" onchange="update()"> Vis NPS &minus; LRTF forskel</label>
+</div>
+
+<canvas id="plotCanvas" width="700" height="400"></canvas>
+
+<div id="dataTable"></div>
+
+<div class="finding-box">
+  <b>Hovedfund:</b> NPS og LRTF producerer identiske resultater (forskel = 0.0000) p&aring; tværs af alle betingelser.
+  Dette skyldes monotoniteten i NPS-prædiktionsmodellen.
+</div>
+
+<script>
+const DATA = [
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7642, "avg_individual_nps_ci95": 0.0193, "organisation_nps_mean": 16.4463, "organisation_nps_ci95": 0.7461, "avg_case_resolution_time_days_mean": 36.0066, "avg_case_resolution_time_days_ci95": 4.5808, "avg_waiting_time_days_mean": 17.2195, "avg_waiting_time_days_ci95": 2.3026},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8227, "avg_individual_nps_ci95": 0.0167, "organisation_nps_mean": 18.6494, "organisation_nps_ci95": 0.67, "avg_case_resolution_time_days_mean": 17.0561, "avg_case_resolution_time_days_ci95": 3.1959, "avg_waiting_time_days_mean": 7.5978, "avg_waiting_time_days_ci95": 1.59},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8704, "avg_individual_nps_ci95": 0.014, "organisation_nps_mean": 20.4616, "organisation_nps_ci95": 0.5469, "avg_case_resolution_time_days_mean": 7.0062, "avg_case_resolution_time_days_ci95": 1.4528, "avg_waiting_time_days_mean": 2.5104, "avg_waiting_time_days_ci95": 0.7159},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8521, "avg_individual_nps_ci95": 0.0134, "organisation_nps_mean": 19.7561, "organisation_nps_ci95": 0.5074, "avg_case_resolution_time_days_mean": 10.5806, "avg_case_resolution_time_days_ci95": 0.6639, "avg_waiting_time_days_mean": 56.3182, "avg_waiting_time_days_ci95": 4.7124},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8725, "avg_individual_nps_ci95": 0.0128, "organisation_nps_mean": 20.4741, "organisation_nps_ci95": 0.5049, "avg_case_resolution_time_days_mean": 8.035, "avg_case_resolution_time_days_ci95": 0.7711, "avg_waiting_time_days_mean": 32.0416, "avg_waiting_time_days_ci95": 5.4288},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8857, "avg_individual_nps_ci95": 0.0137, "organisation_nps_mean": 20.7901, "organisation_nps_ci95": 0.5358, "avg_case_resolution_time_days_mean": 5.318, "avg_case_resolution_time_days_ci95": 0.685, "avg_waiting_time_days_mean": 14.2061, "avg_waiting_time_days_ci95": 3.9785},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8521, "avg_individual_nps_ci95": 0.0134, "organisation_nps_mean": 19.7561, "organisation_nps_ci95": 0.5074, "avg_case_resolution_time_days_mean": 10.5806, "avg_case_resolution_time_days_ci95": 0.6639, "avg_waiting_time_days_mean": 56.3182, "avg_waiting_time_days_ci95": 4.7124},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8725, "avg_individual_nps_ci95": 0.0128, "organisation_nps_mean": 20.4741, "organisation_nps_ci95": 0.5049, "avg_case_resolution_time_days_mean": 8.035, "avg_case_resolution_time_days_ci95": 0.7711, "avg_waiting_time_days_mean": 32.0416, "avg_waiting_time_days_ci95": 5.4288},
+{"rho": 0.0, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8857, "avg_individual_nps_ci95": 0.0137, "organisation_nps_mean": 20.7901, "organisation_nps_ci95": 0.5358, "avg_case_resolution_time_days_mean": 5.318, "avg_case_resolution_time_days_ci95": 0.685, "avg_waiting_time_days_mean": 14.2061, "avg_waiting_time_days_ci95": 3.9785},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7681, "avg_individual_nps_ci95": 0.0178, "organisation_nps_mean": 16.5921, "organisation_nps_ci95": 0.6882, "avg_case_resolution_time_days_mean": 34.8853, "avg_case_resolution_time_days_ci95": 4.2988, "avg_waiting_time_days_mean": 16.6734, "avg_waiting_time_days_ci95": 2.1547},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8143, "avg_individual_nps_ci95": 0.0171, "organisation_nps_mean": 18.4842, "organisation_nps_ci95": 0.6468, "avg_case_resolution_time_days_mean": 15.9183, "avg_case_resolution_time_days_ci95": 2.9009, "avg_waiting_time_days_mean": 7.0344, "avg_waiting_time_days_ci95": 1.4494},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8681, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 20.2353, "organisation_nps_ci95": 0.5407, "avg_case_resolution_time_days_mean": 6.5179, "avg_case_resolution_time_days_ci95": 1.2207, "avg_waiting_time_days_mean": 2.2542, "avg_waiting_time_days_ci95": 0.5936},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.865, "avg_individual_nps_ci95": 0.0157, "organisation_nps_mean": 20.2971, "organisation_nps_ci95": 0.6123, "avg_case_resolution_time_days_mean": 10.2771, "avg_case_resolution_time_days_ci95": 0.6102, "avg_waiting_time_days_mean": 55.996, "avg_waiting_time_days_ci95": 4.6718},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8599, "avg_individual_nps_ci95": 0.0143, "organisation_nps_mean": 19.9857, "organisation_nps_ci95": 0.5967, "avg_case_resolution_time_days_mean": 8.0146, "avg_case_resolution_time_days_ci95": 0.7309, "avg_waiting_time_days_mean": 32.5581, "avg_waiting_time_days_ci95": 5.3673},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8809, "avg_individual_nps_ci95": 0.0122, "organisation_nps_mean": 20.8275, "organisation_nps_ci95": 0.4611, "avg_case_resolution_time_days_mean": 5.2571, "avg_case_resolution_time_days_ci95": 0.6804, "avg_waiting_time_days_mean": 13.211, "avg_waiting_time_days_ci95": 3.7853},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.865, "avg_individual_nps_ci95": 0.0157, "organisation_nps_mean": 20.2971, "organisation_nps_ci95": 0.6123, "avg_case_resolution_time_days_mean": 10.2771, "avg_case_resolution_time_days_ci95": 0.6102, "avg_waiting_time_days_mean": 55.996, "avg_waiting_time_days_ci95": 4.6718},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8599, "avg_individual_nps_ci95": 0.0143, "organisation_nps_mean": 19.9857, "organisation_nps_ci95": 0.5967, "avg_case_resolution_time_days_mean": 8.0146, "avg_case_resolution_time_days_ci95": 0.7309, "avg_waiting_time_days_mean": 32.5581, "avg_waiting_time_days_ci95": 5.3673},
+{"rho": 0.0, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8809, "avg_individual_nps_ci95": 0.0122, "organisation_nps_mean": 20.8275, "organisation_nps_ci95": 0.4611, "avg_case_resolution_time_days_mean": 5.2571, "avg_case_resolution_time_days_ci95": 0.6804, "avg_waiting_time_days_mean": 13.211, "avg_waiting_time_days_ci95": 3.7853},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7642, "avg_individual_nps_ci95": 0.0193, "organisation_nps_mean": 16.4463, "organisation_nps_ci95": 0.7461, "avg_case_resolution_time_days_mean": 36.0066, "avg_case_resolution_time_days_ci95": 4.5808, "avg_waiting_time_days_mean": 17.2195, "avg_waiting_time_days_ci95": 2.3026},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8227, "avg_individual_nps_ci95": 0.0167, "organisation_nps_mean": 18.6494, "organisation_nps_ci95": 0.67, "avg_case_resolution_time_days_mean": 17.0561, "avg_case_resolution_time_days_ci95": 3.1959, "avg_waiting_time_days_mean": 7.5978, "avg_waiting_time_days_ci95": 1.59},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8704, "avg_individual_nps_ci95": 0.014, "organisation_nps_mean": 20.4616, "organisation_nps_ci95": 0.5469, "avg_case_resolution_time_days_mean": 7.0062, "avg_case_resolution_time_days_ci95": 1.4528, "avg_waiting_time_days_mean": 2.5104, "avg_waiting_time_days_ci95": 0.7159},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8469, "avg_individual_nps_ci95": 0.0153, "organisation_nps_mean": 19.3548, "organisation_nps_ci95": 0.5762, "avg_case_resolution_time_days_mean": 11.1512, "avg_case_resolution_time_days_ci95": 0.6587, "avg_waiting_time_days_mean": 56.7533, "avg_waiting_time_days_ci95": 4.7606},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8613, "avg_individual_nps_ci95": 0.0138, "organisation_nps_mean": 20.0441, "organisation_nps_ci95": 0.543, "avg_case_resolution_time_days_mean": 8.4821, "avg_case_resolution_time_days_ci95": 0.8158, "avg_waiting_time_days_mean": 32.9294, "avg_waiting_time_days_ci95": 5.4706},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8781, "avg_individual_nps_ci95": 0.0124, "organisation_nps_mean": 20.604, "organisation_nps_ci95": 0.4799, "avg_case_resolution_time_days_mean": 5.7232, "avg_case_resolution_time_days_ci95": 0.7524, "avg_waiting_time_days_mean": 15.394, "avg_waiting_time_days_ci95": 4.2751},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8469, "avg_individual_nps_ci95": 0.0153, "organisation_nps_mean": 19.3548, "organisation_nps_ci95": 0.5762, "avg_case_resolution_time_days_mean": 11.1512, "avg_case_resolution_time_days_ci95": 0.6587, "avg_waiting_time_days_mean": 56.7533, "avg_waiting_time_days_ci95": 4.7606},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8613, "avg_individual_nps_ci95": 0.0138, "organisation_nps_mean": 20.0441, "organisation_nps_ci95": 0.543, "avg_case_resolution_time_days_mean": 8.4821, "avg_case_resolution_time_days_ci95": 0.8158, "avg_waiting_time_days_mean": 32.9294, "avg_waiting_time_days_ci95": 5.4706},
+{"rho": 0.22, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8781, "avg_individual_nps_ci95": 0.0124, "organisation_nps_mean": 20.604, "organisation_nps_ci95": 0.4799, "avg_case_resolution_time_days_mean": 5.7232, "avg_case_resolution_time_days_ci95": 0.7524, "avg_waiting_time_days_mean": 15.394, "avg_waiting_time_days_ci95": 4.2751},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7681, "avg_individual_nps_ci95": 0.0178, "organisation_nps_mean": 16.5921, "organisation_nps_ci95": 0.6882, "avg_case_resolution_time_days_mean": 34.8853, "avg_case_resolution_time_days_ci95": 4.2988, "avg_waiting_time_days_mean": 16.6734, "avg_waiting_time_days_ci95": 2.1547},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8143, "avg_individual_nps_ci95": 0.0171, "organisation_nps_mean": 18.4842, "organisation_nps_ci95": 0.6468, "avg_case_resolution_time_days_mean": 15.9183, "avg_case_resolution_time_days_ci95": 2.9009, "avg_waiting_time_days_mean": 7.0344, "avg_waiting_time_days_ci95": 1.4494},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8681, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 20.2353, "organisation_nps_ci95": 0.5407, "avg_case_resolution_time_days_mean": 6.5179, "avg_case_resolution_time_days_ci95": 1.2207, "avg_waiting_time_days_mean": 2.2542, "avg_waiting_time_days_ci95": 0.5936},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8655, "avg_individual_nps_ci95": 0.0141, "organisation_nps_mean": 20.1951, "organisation_nps_ci95": 0.5345, "avg_case_resolution_time_days_mean": 11.1424, "avg_case_resolution_time_days_ci95": 0.6728, "avg_waiting_time_days_mean": 57.8974, "avg_waiting_time_days_ci95": 4.4647},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8598, "avg_individual_nps_ci95": 0.0125, "organisation_nps_mean": 19.9736, "organisation_nps_ci95": 0.4825, "avg_case_resolution_time_days_mean": 8.42, "avg_case_resolution_time_days_ci95": 0.8027, "avg_waiting_time_days_mean": 33.2703, "avg_waiting_time_days_ci95": 5.4716},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8626, "avg_individual_nps_ci95": 0.0127, "organisation_nps_mean": 19.9852, "organisation_nps_ci95": 0.478, "avg_case_resolution_time_days_mean": 5.3783, "avg_case_resolution_time_days_ci95": 0.6952, "avg_waiting_time_days_mean": 14.2109, "avg_waiting_time_days_ci95": 4.0864},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8655, "avg_individual_nps_ci95": 0.0141, "organisation_nps_mean": 20.1951, "organisation_nps_ci95": 0.5345, "avg_case_resolution_time_days_mean": 11.1424, "avg_case_resolution_time_days_ci95": 0.6728, "avg_waiting_time_days_mean": 57.8974, "avg_waiting_time_days_ci95": 4.4647},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8598, "avg_individual_nps_ci95": 0.0125, "organisation_nps_mean": 19.9736, "organisation_nps_ci95": 0.4825, "avg_case_resolution_time_days_mean": 8.42, "avg_case_resolution_time_days_ci95": 0.8027, "avg_waiting_time_days_mean": 33.2703, "avg_waiting_time_days_ci95": 5.4716},
+{"rho": 0.22, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8626, "avg_individual_nps_ci95": 0.0127, "organisation_nps_mean": 19.9852, "organisation_nps_ci95": 0.478, "avg_case_resolution_time_days_mean": 5.3783, "avg_case_resolution_time_days_ci95": 0.6952, "avg_waiting_time_days_mean": 14.2109, "avg_waiting_time_days_ci95": 4.0864},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7642, "avg_individual_nps_ci95": 0.0193, "organisation_nps_mean": 16.4463, "organisation_nps_ci95": 0.7461, "avg_case_resolution_time_days_mean": 36.0066, "avg_case_resolution_time_days_ci95": 4.5808, "avg_waiting_time_days_mean": 17.2195, "avg_waiting_time_days_ci95": 2.3026},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8227, "avg_individual_nps_ci95": 0.0167, "organisation_nps_mean": 18.6494, "organisation_nps_ci95": 0.67, "avg_case_resolution_time_days_mean": 17.0561, "avg_case_resolution_time_days_ci95": 3.1959, "avg_waiting_time_days_mean": 7.5978, "avg_waiting_time_days_ci95": 1.59},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8704, "avg_individual_nps_ci95": 0.014, "organisation_nps_mean": 20.4616, "organisation_nps_ci95": 0.5469, "avg_case_resolution_time_days_mean": 7.0062, "avg_case_resolution_time_days_ci95": 1.4528, "avg_waiting_time_days_mean": 2.5104, "avg_waiting_time_days_ci95": 0.7159},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8433, "avg_individual_nps_ci95": 0.0148, "organisation_nps_mean": 19.4481, "organisation_nps_ci95": 0.5821, "avg_case_resolution_time_days_mean": 12.0674, "avg_case_resolution_time_days_ci95": 0.7528, "avg_waiting_time_days_mean": 56.7025, "avg_waiting_time_days_ci95": 4.8985},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8521, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 19.8268, "organisation_nps_ci95": 0.5232, "avg_case_resolution_time_days_mean": 9.366, "avg_case_resolution_time_days_ci95": 0.9013, "avg_waiting_time_days_mean": 34.464, "avg_waiting_time_days_ci95": 5.5376},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8754, "avg_individual_nps_ci95": 0.013, "organisation_nps_mean": 20.5353, "organisation_nps_ci95": 0.4886, "avg_case_resolution_time_days_mean": 6.1587, "avg_case_resolution_time_days_ci95": 0.8621, "avg_waiting_time_days_mean": 16.1464, "avg_waiting_time_days_ci95": 4.4245},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8433, "avg_individual_nps_ci95": 0.0148, "organisation_nps_mean": 19.4481, "organisation_nps_ci95": 0.5821, "avg_case_resolution_time_days_mean": 12.0674, "avg_case_resolution_time_days_ci95": 0.7528, "avg_waiting_time_days_mean": 56.7025, "avg_waiting_time_days_ci95": 4.8985},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8521, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 19.8268, "organisation_nps_ci95": 0.5232, "avg_case_resolution_time_days_mean": 9.366, "avg_case_resolution_time_days_ci95": 0.9013, "avg_waiting_time_days_mean": 34.464, "avg_waiting_time_days_ci95": 5.5376},
+{"rho": 0.5, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8754, "avg_individual_nps_ci95": 0.013, "organisation_nps_mean": 20.5353, "organisation_nps_ci95": 0.4886, "avg_case_resolution_time_days_mean": 6.1587, "avg_case_resolution_time_days_ci95": 0.8621, "avg_waiting_time_days_mean": 16.1464, "avg_waiting_time_days_ci95": 4.4245},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7681, "avg_individual_nps_ci95": 0.0178, "organisation_nps_mean": 16.5921, "organisation_nps_ci95": 0.6882, "avg_case_resolution_time_days_mean": 34.8853, "avg_case_resolution_time_days_ci95": 4.2988, "avg_waiting_time_days_mean": 16.6734, "avg_waiting_time_days_ci95": 2.1547},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8143, "avg_individual_nps_ci95": 0.0171, "organisation_nps_mean": 18.4842, "organisation_nps_ci95": 0.6468, "avg_case_resolution_time_days_mean": 15.9183, "avg_case_resolution_time_days_ci95": 2.9009, "avg_waiting_time_days_mean": 7.0344, "avg_waiting_time_days_ci95": 1.4494},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8681, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 20.2353, "organisation_nps_ci95": 0.5407, "avg_case_resolution_time_days_mean": 6.5179, "avg_case_resolution_time_days_ci95": 1.2207, "avg_waiting_time_days_mean": 2.2542, "avg_waiting_time_days_ci95": 0.5936},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8602, "avg_individual_nps_ci95": 0.0141, "organisation_nps_mean": 19.6719, "organisation_nps_ci95": 0.5522, "avg_case_resolution_time_days_mean": 11.6802, "avg_case_resolution_time_days_ci95": 0.676, "avg_waiting_time_days_mean": 58.4084, "avg_waiting_time_days_ci95": 4.5782},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8617, "avg_individual_nps_ci95": 0.0121, "organisation_nps_mean": 19.992, "organisation_nps_ci95": 0.4847, "avg_case_resolution_time_days_mean": 8.8265, "avg_case_resolution_time_days_ci95": 0.8228, "avg_waiting_time_days_mean": 33.1142, "avg_waiting_time_days_ci95": 5.4011},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8821, "avg_individual_nps_ci95": 0.013, "organisation_nps_mean": 20.7727, "organisation_nps_ci95": 0.5114, "avg_case_resolution_time_days_mean": 5.7274, "avg_case_resolution_time_days_ci95": 0.7433, "avg_waiting_time_days_mean": 14.2925, "avg_waiting_time_days_ci95": 3.9968},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8602, "avg_individual_nps_ci95": 0.0141, "organisation_nps_mean": 19.6719, "organisation_nps_ci95": 0.5522, "avg_case_resolution_time_days_mean": 11.6802, "avg_case_resolution_time_days_ci95": 0.676, "avg_waiting_time_days_mean": 58.4084, "avg_waiting_time_days_ci95": 4.5782},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8617, "avg_individual_nps_ci95": 0.0121, "organisation_nps_mean": 19.992, "organisation_nps_ci95": 0.4847, "avg_case_resolution_time_days_mean": 8.8265, "avg_case_resolution_time_days_ci95": 0.8228, "avg_waiting_time_days_mean": 33.1142, "avg_waiting_time_days_ci95": 5.4011},
+{"rho": 0.5, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8821, "avg_individual_nps_ci95": 0.013, "organisation_nps_mean": 20.7727, "organisation_nps_ci95": 0.5114, "avg_case_resolution_time_days_mean": 5.7274, "avg_case_resolution_time_days_ci95": 0.7433, "avg_waiting_time_days_mean": 14.2925, "avg_waiting_time_days_ci95": 3.9968},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7642, "avg_individual_nps_ci95": 0.0193, "organisation_nps_mean": 16.4463, "organisation_nps_ci95": 0.7461, "avg_case_resolution_time_days_mean": 36.0066, "avg_case_resolution_time_days_ci95": 4.5808, "avg_waiting_time_days_mean": 17.2195, "avg_waiting_time_days_ci95": 2.3026},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8227, "avg_individual_nps_ci95": 0.0167, "organisation_nps_mean": 18.6494, "organisation_nps_ci95": 0.67, "avg_case_resolution_time_days_mean": 17.0561, "avg_case_resolution_time_days_ci95": 3.1959, "avg_waiting_time_days_mean": 7.5978, "avg_waiting_time_days_ci95": 1.59},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8704, "avg_individual_nps_ci95": 0.014, "organisation_nps_mean": 20.4616, "organisation_nps_ci95": 0.5469, "avg_case_resolution_time_days_mean": 7.0062, "avg_case_resolution_time_days_ci95": 1.4528, "avg_waiting_time_days_mean": 2.5104, "avg_waiting_time_days_ci95": 0.7159},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8482, "avg_individual_nps_ci95": 0.0168, "organisation_nps_mean": 19.5556, "organisation_nps_ci95": 0.611, "avg_case_resolution_time_days_mean": 13.0872, "avg_case_resolution_time_days_ci95": 0.7641, "avg_waiting_time_days_mean": 59.1376, "avg_waiting_time_days_ci95": 4.7416},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8538, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 19.7741, "organisation_nps_ci95": 0.5932, "avg_case_resolution_time_days_mean": 10.4258, "avg_case_resolution_time_days_ci95": 1.0137, "avg_waiting_time_days_mean": 35.6559, "avg_waiting_time_days_ci95": 5.7489},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8758, "avg_individual_nps_ci95": 0.0125, "organisation_nps_mean": 20.6323, "organisation_nps_ci95": 0.4754, "avg_case_resolution_time_days_mean": 6.9228, "avg_case_resolution_time_days_ci95": 0.9864, "avg_waiting_time_days_mean": 17.3069, "avg_waiting_time_days_ci95": 4.6792},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8482, "avg_individual_nps_ci95": 0.0168, "organisation_nps_mean": 19.5556, "organisation_nps_ci95": 0.611, "avg_case_resolution_time_days_mean": 13.0872, "avg_case_resolution_time_days_ci95": 0.7641, "avg_waiting_time_days_mean": 59.1376, "avg_waiting_time_days_ci95": 4.7416},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8538, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 19.7741, "organisation_nps_ci95": 0.5932, "avg_case_resolution_time_days_mean": 10.4258, "avg_case_resolution_time_days_ci95": 1.0137, "avg_waiting_time_days_mean": 35.6559, "avg_waiting_time_days_ci95": 5.7489},
+{"rho": 0.85, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8758, "avg_individual_nps_ci95": 0.0125, "organisation_nps_mean": 20.6323, "organisation_nps_ci95": 0.4754, "avg_case_resolution_time_days_mean": 6.9228, "avg_case_resolution_time_days_ci95": 0.9864, "avg_waiting_time_days_mean": 17.3069, "avg_waiting_time_days_ci95": 4.6792},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7681, "avg_individual_nps_ci95": 0.0178, "organisation_nps_mean": 16.5921, "organisation_nps_ci95": 0.6882, "avg_case_resolution_time_days_mean": 34.8853, "avg_case_resolution_time_days_ci95": 4.2988, "avg_waiting_time_days_mean": 16.6734, "avg_waiting_time_days_ci95": 2.1547},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8143, "avg_individual_nps_ci95": 0.0171, "organisation_nps_mean": 18.4842, "organisation_nps_ci95": 0.6468, "avg_case_resolution_time_days_mean": 15.9183, "avg_case_resolution_time_days_ci95": 2.9009, "avg_waiting_time_days_mean": 7.0344, "avg_waiting_time_days_ci95": 1.4494},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8681, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 20.2353, "organisation_nps_ci95": 0.5407, "avg_case_resolution_time_days_mean": 6.5179, "avg_case_resolution_time_days_ci95": 1.2207, "avg_waiting_time_days_mean": 2.2542, "avg_waiting_time_days_ci95": 0.5936},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8543, "avg_individual_nps_ci95": 0.0132, "organisation_nps_mean": 19.5487, "organisation_nps_ci95": 0.5388, "avg_case_resolution_time_days_mean": 12.1237, "avg_case_resolution_time_days_ci95": 0.6793, "avg_waiting_time_days_mean": 58.6256, "avg_waiting_time_days_ci95": 4.6097},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8751, "avg_individual_nps_ci95": 0.0143, "organisation_nps_mean": 20.4253, "organisation_nps_ci95": 0.5351, "avg_case_resolution_time_days_mean": 9.3562, "avg_case_resolution_time_days_ci95": 0.8528, "avg_waiting_time_days_mean": 33.5696, "avg_waiting_time_days_ci95": 5.3005},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8688, "avg_individual_nps_ci95": 0.0112, "organisation_nps_mean": 20.2062, "organisation_nps_ci95": 0.439, "avg_case_resolution_time_days_mean": 5.9218, "avg_case_resolution_time_days_ci95": 0.7867, "avg_waiting_time_days_mean": 13.831, "avg_waiting_time_days_ci95": 3.9376},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8543, "avg_individual_nps_ci95": 0.0132, "organisation_nps_mean": 19.5487, "organisation_nps_ci95": 0.5388, "avg_case_resolution_time_days_mean": 12.1237, "avg_case_resolution_time_days_ci95": 0.6793, "avg_waiting_time_days_mean": 58.6256, "avg_waiting_time_days_ci95": 4.6097},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8751, "avg_individual_nps_ci95": 0.0143, "organisation_nps_mean": 20.4253, "organisation_nps_ci95": 0.5351, "avg_case_resolution_time_days_mean": 9.3562, "avg_case_resolution_time_days_ci95": 0.8528, "avg_waiting_time_days_mean": 33.5696, "avg_waiting_time_days_ci95": 5.3005},
+{"rho": 0.85, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8688, "avg_individual_nps_ci95": 0.0112, "organisation_nps_mean": 20.2062, "organisation_nps_ci95": 0.439, "avg_case_resolution_time_days_mean": 5.9218, "avg_case_resolution_time_days_ci95": 0.7867, "avg_waiting_time_days_mean": 13.831, "avg_waiting_time_days_ci95": 3.9376},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7642, "avg_individual_nps_ci95": 0.0193, "organisation_nps_mean": 16.4463, "organisation_nps_ci95": 0.7461, "avg_case_resolution_time_days_mean": 36.0066, "avg_case_resolution_time_days_ci95": 4.5808, "avg_waiting_time_days_mean": 17.2195, "avg_waiting_time_days_ci95": 2.3026},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8227, "avg_individual_nps_ci95": 0.0167, "organisation_nps_mean": 18.6494, "organisation_nps_ci95": 0.67, "avg_case_resolution_time_days_mean": 17.0561, "avg_case_resolution_time_days_ci95": 3.1959, "avg_waiting_time_days_mean": 7.5978, "avg_waiting_time_days_ci95": 1.59},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8704, "avg_individual_nps_ci95": 0.014, "organisation_nps_mean": 20.4616, "organisation_nps_ci95": 0.5469, "avg_case_resolution_time_days_mean": 7.0062, "avg_case_resolution_time_days_ci95": 1.4528, "avg_waiting_time_days_mean": 2.5104, "avg_waiting_time_days_ci95": 0.7159},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8529, "avg_individual_nps_ci95": 0.0146, "organisation_nps_mean": 19.8541, "organisation_nps_ci95": 0.567, "avg_case_resolution_time_days_mean": 13.8193, "avg_case_resolution_time_days_ci95": 0.8345, "avg_waiting_time_days_mean": 60.0046, "avg_waiting_time_days_ci95": 4.6918},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8524, "avg_individual_nps_ci95": 0.0158, "organisation_nps_mean": 19.7868, "organisation_nps_ci95": 0.5823, "avg_case_resolution_time_days_mean": 10.8771, "avg_case_resolution_time_days_ci95": 1.0686, "avg_waiting_time_days_mean": 36.8511, "avg_waiting_time_days_ci95": 5.6936},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8709, "avg_individual_nps_ci95": 0.0137, "organisation_nps_mean": 20.3391, "organisation_nps_ci95": 0.5178, "avg_case_resolution_time_days_mean": 7.5534, "avg_case_resolution_time_days_ci95": 1.0462, "avg_waiting_time_days_mean": 18.1255, "avg_waiting_time_days_ci95": 4.6872},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8529, "avg_individual_nps_ci95": 0.0146, "organisation_nps_mean": 19.8541, "organisation_nps_ci95": 0.567, "avg_case_resolution_time_days_mean": 13.8193, "avg_case_resolution_time_days_ci95": 0.8345, "avg_waiting_time_days_mean": 60.0046, "avg_waiting_time_days_ci95": 4.6918},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8524, "avg_individual_nps_ci95": 0.0158, "organisation_nps_mean": 19.7868, "organisation_nps_ci95": 0.5823, "avg_case_resolution_time_days_mean": 10.8771, "avg_case_resolution_time_days_ci95": 1.0686, "avg_waiting_time_days_mean": 36.8511, "avg_waiting_time_days_ci95": 5.6936},
+{"rho": 1.0, "sampling_mode": "hard", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8709, "avg_individual_nps_ci95": 0.0137, "organisation_nps_mean": 20.3391, "organisation_nps_ci95": 0.5178, "avg_case_resolution_time_days_mean": 7.5534, "avg_case_resolution_time_days_ci95": 1.0462, "avg_waiting_time_days_mean": 18.1255, "avg_waiting_time_days_ci95": 4.6872},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 5, "avg_individual_nps_mean": 7.7681, "avg_individual_nps_ci95": 0.0178, "organisation_nps_mean": 16.5921, "organisation_nps_ci95": 0.6882, "avg_case_resolution_time_days_mean": 34.8853, "avg_case_resolution_time_days_ci95": 4.2988, "avg_waiting_time_days_mean": 16.6734, "avg_waiting_time_days_ci95": 2.1547},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 6, "avg_individual_nps_mean": 7.8143, "avg_individual_nps_ci95": 0.0171, "organisation_nps_mean": 18.4842, "organisation_nps_ci95": 0.6468, "avg_case_resolution_time_days_mean": 15.9183, "avg_case_resolution_time_days_ci95": 2.9009, "avg_waiting_time_days_mean": 7.0344, "avg_waiting_time_days_ci95": 1.4494},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "FCFS", "n_agents": 7, "avg_individual_nps_mean": 7.8681, "avg_individual_nps_ci95": 0.0144, "organisation_nps_mean": 20.2353, "organisation_nps_ci95": 0.5407, "avg_case_resolution_time_days_mean": 6.5179, "avg_case_resolution_time_days_ci95": 1.2207, "avg_waiting_time_days_mean": 2.2542, "avg_waiting_time_days_ci95": 0.5936},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 5, "avg_individual_nps_mean": 7.8419, "avg_individual_nps_ci95": 0.0151, "organisation_nps_mean": 19.2918, "organisation_nps_ci95": 0.5926, "avg_case_resolution_time_days_mean": 12.2551, "avg_case_resolution_time_days_ci95": 0.7317, "avg_waiting_time_days_mean": 58.5622, "avg_waiting_time_days_ci95": 4.7591},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 6, "avg_individual_nps_mean": 7.8551, "avg_individual_nps_ci95": 0.0145, "organisation_nps_mean": 19.7529, "organisation_nps_ci95": 0.5426, "avg_case_resolution_time_days_mean": 9.4864, "avg_case_resolution_time_days_ci95": 0.9242, "avg_waiting_time_days_mean": 34.0971, "avg_waiting_time_days_ci95": 5.5412},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "LRTF", "n_agents": 7, "avg_individual_nps_mean": 7.8813, "avg_individual_nps_ci95": 0.0123, "organisation_nps_mean": 20.6823, "organisation_nps_ci95": 0.4886, "avg_case_resolution_time_days_mean": 6.2874, "avg_case_resolution_time_days_ci95": 0.8765, "avg_waiting_time_days_mean": 15.2286, "avg_waiting_time_days_ci95": 4.2213},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 5, "avg_individual_nps_mean": 7.8419, "avg_individual_nps_ci95": 0.0151, "organisation_nps_mean": 19.2918, "organisation_nps_ci95": 0.5926, "avg_case_resolution_time_days_mean": 12.2551, "avg_case_resolution_time_days_ci95": 0.7317, "avg_waiting_time_days_mean": 58.5622, "avg_waiting_time_days_ci95": 4.7591},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 6, "avg_individual_nps_mean": 7.8551, "avg_individual_nps_ci95": 0.0145, "organisation_nps_mean": 19.7529, "organisation_nps_ci95": 0.5426, "avg_case_resolution_time_days_mean": 9.4864, "avg_case_resolution_time_days_ci95": 0.9242, "avg_waiting_time_days_mean": 34.0971, "avg_waiting_time_days_ci95": 5.5412},
+{"rho": 1.0, "sampling_mode": "soft", "discipline": "NPS", "n_agents": 7, "avg_individual_nps_mean": 7.8813, "avg_individual_nps_ci95": 0.0123, "organisation_nps_mean": 20.6823, "organisation_nps_ci95": 0.4886, "avg_case_resolution_time_days_mean": 6.2874, "avg_case_resolution_time_days_ci95": 0.8765, "avg_waiting_time_days_mean": 15.2286, "avg_waiting_time_days_ci95": 4.2213}
+];
+
+const DISC_COLORS = { FCFS: '#ff7f0e', LRTF: '#2ca02c', NPS: '#d62728' };
+const RHOS = [0.0, 0.22, 0.5, 0.85, 1.0];
+const DISCIPLINES = ['FCFS', 'LRTF', 'NPS'];
+
+const METRIC_LABELS = {
+  'avg_individual_nps': 'Individual NPS (gns.)',
+  'organisation_nps': 'Organisation NPS',
+  'avg_case_resolution_time_days': 'Resolution time (dage)',
+  'avg_waiting_time_days': 'Ventetid (dage)'
+};
+
+function getData(metric, sampling, nAgents) {
+  const result = {};
+  for (const d of DISCIPLINES) {
+    result[d] = [];
+    for (const rho of RHOS) {
+      const row = DATA.find(r =>
+        Math.abs(r.rho - rho) < 0.01 &&
+        r.sampling_mode === sampling &&
+        r.discipline === d &&
+        r.n_agents === nAgents
+      );
+      if (row) {
+        result[d].push({
+          rho,
+          mean: row[metric + '_mean'],
+          ci: row[metric + '_ci95']
+        });
+      }
+    }
+  }
+  return result;
+}
+
+function update() {
+  const metric = document.getElementById('selMetric').value;
+  const sampling = document.getElementById('selSampling').value;
+  const nAgents = parseInt(document.getElementById('selAgents').value);
+  const showDiff = document.getElementById('chkDiff').checked;
+
+  const data = getData(metric, sampling, nAgents);
+
+  if (showDiff) {
+    drawDiffPlot(data, metric);
+  } else {
+    drawPlot(data, metric);
+  }
+  drawTable(data, metric);
+}
+
+function drawPlot(data, metric) {
+  const c = document.getElementById('plotCanvas');
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 70, padR = 30, padT = 30, padB = 50;
+  const pW = W - padL - padR, pH = H - padT - padB;
+
+  // Find y range
+  let yMin = Infinity, yMax = -Infinity;
+  for (const d of DISCIPLINES) {
+    for (const p of data[d]) {
+      yMin = Math.min(yMin, p.mean - p.ci);
+      yMax = Math.max(yMax, p.mean + p.ci);
+    }
+  }
+  const yPad = (yMax - yMin) * 0.15 || 1;
+  yMin -= yPad; yMax += yPad;
+
+  function tx(rho) { return padL + (rho / 1.0) * pW; }
+  function ty(v) { return padT + (yMax - v)/(yMax - yMin) * pH; }
+
+  // Grid
+  ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = yMin + (yMax - yMin) * i / 5;
+    ctx.beginPath(); ctx.moveTo(padL, ty(y)); ctx.lineTo(W-padR, ty(y)); ctx.stroke();
+  }
+  for (const rho of RHOS) {
+    ctx.beginPath(); ctx.moveTo(tx(rho), padT); ctx.lineTo(tx(rho), H-padB); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
+
+  // Lines + error bars
+  for (const d of DISCIPLINES) {
+    const pts = data[d];
+    if (pts.length === 0) continue;
+
+    // Line
+    ctx.strokeStyle = DISC_COLORS[d]; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+      const x = tx(pts[i].rho), y = ty(pts[i].mean);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Points + error bars
+    for (const p of pts) {
+      const x = tx(p.rho), y = ty(p.mean);
+
+      // Error bar
+      ctx.strokeStyle = DISC_COLORS[d]; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, ty(p.mean - p.ci)); ctx.lineTo(x, ty(p.mean + p.ci)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x-4, ty(p.mean-p.ci)); ctx.lineTo(x+4, ty(p.mean-p.ci)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x-4, ty(p.mean+p.ci)); ctx.lineTo(x+4, ty(p.mean+p.ci)); ctx.stroke();
+
+      // Point
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2);
+      ctx.fillStyle = DISC_COLORS[d]; ctx.fill();
+    }
+  }
+
+  // Legend
+  let lx = padL + 10, ly = padT + 10;
+  for (const d of DISCIPLINES) {
+    ctx.fillStyle = DISC_COLORS[d];
+    ctx.fillRect(lx, ly, 14, 10);
+    ctx.fillStyle = '#333'; ctx.font = '12px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(d, lx + 18, ly + 9);
+    lx += 70;
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#333'; ctx.font = '12px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('\u03C1 (prediction accuracy)', W/2, H-8);
+  ctx.save(); ctx.translate(16, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText(METRIC_LABELS[metric], 0, 0); ctx.restore();
+
+  // X ticks
+  ctx.font = '11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  for (const rho of RHOS) ctx.fillText(rho.toFixed(2), tx(rho), H-padB+16);
+
+  // Y ticks
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const v = yMin + (yMax - yMin) * i / 5;
+    ctx.fillText(v.toFixed(2), padL-6, ty(v)+4);
+  }
+}
+
+function drawDiffPlot(data, metric) {
+  const c = document.getElementById('plotCanvas');
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 70, padR = 30, padT = 30, padB = 50;
+  const pW = W - padL - padR, pH = H - padT - padB;
+
+  // Compute diff
+  const diffs = [];
+  for (let i = 0; i < data['NPS'].length; i++) {
+    const nps = data['NPS'][i];
+    const lrtf = data['LRTF'][i];
+    diffs.push({ rho: nps.rho, diff: nps.mean - lrtf.mean });
+  }
+
+  let yMin = -0.5, yMax = 0.5;
+  for (const d of diffs) {
+    yMin = Math.min(yMin, d.diff - 0.1);
+    yMax = Math.max(yMax, d.diff + 0.1);
+  }
+
+  function tx(rho) { return padL + (rho / 1.0) * pW; }
+  function ty(v) { return padT + (yMax - v)/(yMax - yMin) * pH; }
+
+  // Grid
+  ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = yMin + (yMax - yMin) * i / 5;
+    ctx.beginPath(); ctx.moveTo(padL, ty(y)); ctx.lineTo(W-padR, ty(y)); ctx.stroke();
+  }
+
+  // Zero line
+  ctx.setLineDash([6,4]); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, ty(0)); ctx.lineTo(W-padR, ty(0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
+
+  // Diff line
+  ctx.strokeStyle = '#d62728'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i < diffs.length; i++) {
+    const x = tx(diffs[i].rho), y = ty(diffs[i].diff);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  for (const d of diffs) {
+    ctx.beginPath(); ctx.arc(tx(d.rho), ty(d.diff), 5, 0, Math.PI*2);
+    ctx.fillStyle = '#d62728'; ctx.fill();
+  }
+
+  // Labels
+  ctx.fillStyle = '#333'; ctx.font = '12px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('\u03C1 (prediction accuracy)', W/2, H-8);
+  ctx.save(); ctx.translate(16, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('NPS \u2212 LRTF forskel', 0, 0); ctx.restore();
+
+  ctx.font = '11px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  for (const rho of RHOS) ctx.fillText(rho.toFixed(2), tx(rho), H-padB+16);
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const v = yMin + (yMax - yMin) * i / 5;
+    ctx.fillText(v.toFixed(4), padL-6, ty(v)+4);
+  }
+
+  // Title
+  ctx.fillStyle = '#d62728'; ctx.font = 'bold 13px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('NPS \u2212 LRTF forskel (skal v\u00e6re 0)', W/2, padT-8);
+}
+
+function drawTable(data, metric) {
+  const el = document.getElementById('dataTable');
+  let html = '<table><tr><th>\u03C1</th>';
+  for (const d of DISCIPLINES) html += `<th style="color:${DISC_COLORS[d]}">${d}</th>`;
+  html += '<th>NPS\u2212LRTF</th></tr>';
+
+  for (let i = 0; i < RHOS.length; i++) {
+    html += `<tr><td>${RHOS[i].toFixed(2)}</td>`;
+    for (const d of DISCIPLINES) {
+      const p = data[d][i];
+      if (p) {
+        html += `<td>${p.mean.toFixed(4)} \u00B1${p.ci.toFixed(4)}</td>`;
+      } else {
+        html += '<td>-</td>';
+      }
+    }
+    // Diff
+    const nps = data['NPS'][i], lrtf = data['LRTF'][i];
+    const diff = (nps && lrtf) ? (nps.mean - lrtf.mean).toFixed(4) : '-';
+    html += `<td class="diff-row">${diff}</td></tr>`;
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+update();
+</script>
+</body>
+</html>

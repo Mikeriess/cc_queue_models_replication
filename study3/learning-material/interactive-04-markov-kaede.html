@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Absorberende Markov-kæde — aktivitetssekvenser</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #fff; color: #333; padding: 20px; max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 1.6em; margin-bottom: 4px; }
+h2 { font-size: 1.1em; margin-bottom: 8px; color: #555; }
+.subtitle { color: #777; font-size: 0.95em; margin-bottom: 20px; }
+.section { margin-bottom: 24px; }
+.row { display: flex; gap: 24px; flex-wrap: wrap; }
+canvas { border: 1px solid #ddd; border-radius: 6px; }
+button { padding: 8px 18px; font-size: 0.95em; border: none; border-radius: 5px; cursor: pointer; font-family: inherit; }
+.btn-primary { background: #1f77b4; color: #fff; }
+.btn-primary:hover { background: #1a6599; }
+.btn-secondary { background: #2ca02c; color: #fff; }
+.btn-secondary:hover { background: #248f24; }
+table { border-collapse: collapse; font-size: 0.9em; }
+th, td { border: 1px solid #ccc; padding: 6px 12px; text-align: center; }
+th { background: #f5f5f5; }
+.highlight-cell { background: #fff3cd; font-weight: bold; }
+.info-box { background: #f0f7ff; border-left: 4px solid #1f77b4; padding: 12px 16px; border-radius: 4px; font-size: 0.9em; line-height: 1.5; }
+.path-display { font-family: 'Courier New', monospace; font-size: 0.85em; padding: 4px 0; }
+.history-panel { max-height: 260px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-size: 0.85em; }
+.history-entry { padding: 3px 0; border-bottom: 1px solid #eee; }
+.stats-box { background: #f8f8f8; border-radius: 6px; padding: 12px 16px; font-size: 0.9em; }
+.controls { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+</style>
+</head>
+<body>
+
+<h1>Absorberende Markov-kæde — aktivitetssekvenser</h1>
+<p class="subtitle">Interaktiv visualisering af aktivitetssekvenser i en sagsbehandlingsproces</p>
+
+<div class="section">
+  <h2>Tilstandsdiagram</h2>
+  <canvas id="diagramCanvas" width="750" height="300"></canvas>
+</div>
+
+<div class="section">
+  <h2>Transitionsmatrix</h2>
+  <table id="transMatrix">
+    <tr><th>Fra \ Til</th><th>Task-Rem</th><th>Interaction</th><th>Email</th><th>END</th></tr>
+    <tr><td><b>Task-Rem</b></td><td>0.08</td><td>0.00</td><td>0.67</td><td>0.25</td></tr>
+    <tr><td><b>Interaction</b></td><td>0.00</td><td>0.02</td><td>0.96</td><td>0.02</td></tr>
+    <tr><td><b>Email</b></td><td>0.00</td><td>0.02</td><td>0.45</td><td>0.53</td></tr>
+    <tr><td><b>END</b></td><td>0.00</td><td>0.00</td><td>0.00</td><td>1.00</td></tr>
+  </table>
+  <p style="margin-top:6px;font-size:0.85em;color:#777;">Initialsandsynligheder: P(Interaction)=0.92, P(Email)=0.08</p>
+</div>
+
+<div class="controls">
+  <button class="btn-primary" onclick="generateOneCase()">Gener&eacute;r &eacute;n sag</button>
+  <button class="btn-secondary" onclick="generateBulk()">Gener&eacute;r 1000 sager</button>
+</div>
+
+<div class="row">
+  <div style="flex:1;min-width:320px;">
+    <h2>Aktuel sag</h2>
+    <div id="currentCase" class="path-display" style="min-height:30px;color:#555;">Tryk p&aring; en knap for at starte.</div>
+  </div>
+</div>
+
+<div class="row" style="margin-top:16px;">
+  <div style="flex:1;min-width:350px;">
+    <h2>Historik (seneste 10)</h2>
+    <div id="historyPanel" class="history-panel"><em>Ingen sager endnu.</em></div>
+  </div>
+  <div style="flex:1;min-width:350px;">
+    <h2>Statistik (1000 sager)</h2>
+    <div id="statsPanel" class="stats-box"><em>Tryk "Gener&eacute;r 1000 sager" for at se statistik.</em></div>
+    <canvas id="histCanvas" width="400" height="220" style="margin-top:10px;display:none;"></canvas>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <div class="info-box">
+    <b>END</b> er en absorberende tilstand &mdash; n&aring;r processen n&aring;r END, stopper den.
+    Den fundamentale matrix viser at det forventede antal aktiviteter er ca. 3&ndash;4 per sag.
+  </div>
+</div>
+
+<script>
+// States
+const STATES = ['Task-Rem', 'Interaction', 'Email', 'END'];
+const COLORS = { 'Task-Rem': '#1f77b4', 'Interaction': '#ff7f0e', 'Email': '#2ca02c', 'END': '#d62728' };
+
+// Transition matrix (row = from, col = to)
+const T = [
+  [0.08, 0.00, 0.67, 0.25],
+  [0.00, 0.02, 0.96, 0.02],
+  [0.00, 0.02, 0.45, 0.53],
+  [0.00, 0.00, 0.00, 1.00]
+];
+const INIT = [0, 0.92, 0.08, 0];
+
+// State positions for diagram
+const POS = [
+  {x: 120, y: 80},   // Task-Rem
+  {x: 120, y: 220},  // Interaction
+  {x: 400, y: 150},  // Email
+  {x: 650, y: 150}   // END
+];
+const R = 42;
+
+let caseCount = 0;
+let history = [];
+let animating = false;
+let highlightState = -1;
+let highlightArrow = null; // {from, to}
+
+function drawDiagram() {
+  const c = document.getElementById('diagramCanvas');
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  // Draw arrows first (behind circles)
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 4; j++) {
+      if (T[i][j] > 0 && i !== j) {
+        drawArrow(ctx, i, j);
+      }
+    }
+  }
+  // Self-loops
+  for (let i = 0; i < 3; i++) {
+    if (T[i][i] > 0) drawSelfLoop(ctx, i);
+  }
+
+  // Draw states
+  for (let i = 0; i < 4; i++) {
+    const p = POS[i];
+    const isHighlight = highlightState === i;
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, R, 0, Math.PI * 2);
+    ctx.fillStyle = isHighlight ? COLORS[STATES[i]] : '#fff';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = COLORS[STATES[i]];
+    ctx.stroke();
+
+    // Double border for END
+    if (i === 3) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, R - 5, 0, Math.PI * 2);
+      ctx.strokeStyle = COLORS[STATES[i]];
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = isHighlight ? '#fff' : '#333';
+    ctx.font = 'bold 13px Segoe UI, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(STATES[i], p.x, p.y);
+  }
+}
+
+function drawArrow(ctx, from, to) {
+  const p1 = POS[from], p2 = POS[to];
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const ux = dx/dist, uy = dy/dist;
+
+  // Check if there's a reverse arrow too — offset if so
+  const hasReverse = T[to][from] > 0;
+  let ox = 0, oy = 0;
+  if (hasReverse) {
+    ox = -uy * 8; oy = ux * 8;
+  }
+
+  const sx = p1.x + ux * R + ox;
+  const sy = p1.y + uy * R + oy;
+  const ex = p2.x - ux * (R + 8) + ox;
+  const ey = p2.y - uy * (R + 8) + oy;
+
+  const isHL = highlightArrow && highlightArrow.from === from && highlightArrow.to === to;
+
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(ex, ey);
+  ctx.strokeStyle = isHL ? '#d62728' : '#999';
+  ctx.lineWidth = isHL ? 3 : 1.5;
+  ctx.stroke();
+
+  // Arrowhead
+  const angle = Math.atan2(ey - sy, ex - sx);
+  const headLen = 10;
+  ctx.beginPath();
+  ctx.moveTo(ex, ey);
+  ctx.lineTo(ex - headLen * Math.cos(angle - 0.4), ey - headLen * Math.sin(angle - 0.4));
+  ctx.lineTo(ex - headLen * Math.cos(angle + 0.4), ey - headLen * Math.sin(angle + 0.4));
+  ctx.closePath();
+  ctx.fillStyle = isHL ? '#d62728' : '#999';
+  ctx.fill();
+
+  // Label
+  const mx = (sx + ex) / 2 + ox * 0.5;
+  const my = (sy + ey) / 2 + oy * 0.5;
+  ctx.font = '11px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = isHL ? '#d62728' : '#666';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const labelOx = -uy * 12 + ox;
+  const labelOy = ux * 12 + oy;
+  ctx.fillText(T[from][to].toFixed(2), mx + labelOx, my + labelOy);
+}
+
+function drawSelfLoop(ctx, idx) {
+  const p = POS[idx];
+  const loopR = 20;
+  let cx, cy;
+  if (idx === 0) { cx = p.x - 10; cy = p.y - R - loopR + 2; }
+  else if (idx === 1) { cx = p.x - 10; cy = p.y + R + loopR - 2; }
+  else { cx = p.x; cy = p.y - R - loopR + 2; }
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, loopR, 0, Math.PI * 2);
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.font = '11px Segoe UI, system-ui, sans-serif';
+  ctx.fillStyle = '#666';
+  ctx.textAlign = 'center';
+  ctx.fillText(T[idx][idx].toFixed(2), cx, cy - loopR - 6);
+}
+
+function sampleState(probs) {
+  const r = Math.random();
+  let cum = 0;
+  for (let i = 0; i < probs.length; i++) {
+    cum += probs[i];
+    if (r < cum) return i;
+  }
+  return probs.length - 1;
+}
+
+function generatePath() {
+  let state = sampleState(INIT);
+  const path = [state];
+  let safety = 0;
+  while (state !== 3 && safety < 500) {
+    state = sampleState(T[state]);
+    path.push(state);
+    safety++;
+  }
+  return path;
+}
+
+function pathToString(path, num) {
+  const names = path.map(i => STATES[i]);
+  const acts = path.length - 1; // exclude END from activity count? Actually the steps before END are activities
+  return `Sag #${num}: ${names.join(' \u2192 ')} (${path.length - 1} aktiviteter)`;
+}
+
+async function generateOneCase() {
+  if (animating) return;
+  animating = true;
+  caseCount++;
+
+  const path = generatePath();
+
+  // Animate through path
+  for (let i = 0; i < path.length; i++) {
+    highlightState = path[i];
+    highlightArrow = i > 0 ? {from: path[i-1], to: path[i]} : null;
+    drawDiagram();
+    document.getElementById('currentCase').innerHTML =
+      `<b>Sag #${caseCount}:</b> ` +
+      path.slice(0, i+1).map(s => `<span style="color:${COLORS[STATES[s]]};font-weight:bold">${STATES[s]}</span>`).join(' \u2192 ') +
+      (path[i] === 3 ? ` <b>(${path.length - 1} aktiviteter)</b>` : ' ...');
+    await sleep(500);
+  }
+
+  highlightState = -1;
+  highlightArrow = null;
+  drawDiagram();
+
+  addToHistory(path, caseCount);
+  animating = false;
+}
+
+function addToHistory(path, num) {
+  history.unshift({path, num});
+  if (history.length > 10) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('historyPanel');
+  if (history.length === 0) { el.innerHTML = '<em>Ingen sager endnu.</em>'; return; }
+  el.innerHTML = history.map(h =>
+    `<div class="history-entry">${pathToString(h.path, h.num)}</div>`
+  ).join('');
+}
+
+function generateBulk() {
+  const N = 1000;
+  const lengths = [];
+  const pathCounts = {};
+
+  for (let i = 0; i < N; i++) {
+    const path = generatePath();
+    const len = path.length - 1;
+    lengths.push(len);
+    const key = path.map(s => STATES[s]).join('\u2192');
+    pathCounts[key] = (pathCounts[key] || 0) + 1;
+
+    // Add last few to history
+    if (i >= N - 10) {
+      caseCount++;
+      addToHistory(path, caseCount);
+    } else {
+      caseCount++;
+    }
+  }
+
+  // Stats
+  lengths.sort((a,b) => a - b);
+  const mean = lengths.reduce((a,b) => a+b, 0) / N;
+  const median = N % 2 === 0 ? (lengths[N/2 - 1] + lengths[N/2]) / 2 : lengths[Math.floor(N/2)];
+  let mostCommon = '', maxCount = 0;
+  for (const [k, v] of Object.entries(pathCounts)) {
+    if (v > maxCount) { maxCount = v; mostCommon = k; }
+  }
+
+  document.getElementById('statsPanel').innerHTML =
+    `<b>Resultater for ${N} sager:</b><br>
+    Gennemsnitlig antal aktiviteter: <b>${mean.toFixed(2)}</b><br>
+    Median: <b>${median}</b><br>
+    Min: ${lengths[0]}, Max: ${lengths[lengths.length-1]}<br>
+    Hyppigste sti: <b>${mostCommon}</b> (${maxCount} gange)`;
+
+  drawHistogram(lengths);
+}
+
+function drawHistogram(lengths) {
+  const canvas = document.getElementById('histCanvas');
+  canvas.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const maxLen = Math.max(...lengths);
+  const bins = new Array(maxLen + 1).fill(0);
+  lengths.forEach(l => bins[l]++);
+
+  const maxBin = Math.max(...bins);
+  const padL = 50, padR = 15, padT = 20, padB = 40;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const barW = Math.min(plotW / bins.length, 30);
+
+  // Axes
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, H - padB); ctx.lineTo(W - padR, H - padB);
+  ctx.stroke();
+
+  // Bars
+  for (let i = 0; i < bins.length; i++) {
+    if (bins[i] === 0) continue;
+    const bh = (bins[i] / maxBin) * plotH;
+    const bx = padL + i * barW;
+    ctx.fillStyle = '#1f77b4';
+    ctx.fillRect(bx, H - padB - bh, barW - 1, bh);
+  }
+
+  // X labels
+  ctx.fillStyle = '#333'; ctx.font = '10px Segoe UI, system-ui, sans-serif'; ctx.textAlign = 'center';
+  for (let i = 0; i < bins.length; i += Math.max(1, Math.floor(bins.length/15))) {
+    ctx.fillText(i, padL + i * barW + barW/2, H - padB + 14);
+  }
+  ctx.fillText('Antal aktiviteter', W/2, H - 4);
+
+  // Y labels
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = Math.round(maxBin * i / 4);
+    const y = H - padB - (v / maxBin) * plotH;
+    ctx.fillText(v, padL - 6, y + 4);
+    ctx.strokeStyle = '#eee'; ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+  }
+
+  ctx.fillStyle = '#333'; ctx.textAlign = 'center'; ctx.font = 'bold 12px Segoe UI, system-ui, sans-serif';
+  ctx.fillText('Histogram over stilængder', W/2, 14);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Initial draw
+drawDiagram();
+</script>
+</body>
+</html>
