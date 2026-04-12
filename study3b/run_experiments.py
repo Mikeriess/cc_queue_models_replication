@@ -35,12 +35,13 @@ from simulation import run_single_simulation, NPS_PRED_INTERCEPT
 # EKSPERIMENTELT DESIGN
 # =============================================================================
 
-# Study 3b tilføjer NPS_PRED_INTERCEPT som faktor
-INTERCEPT_LEVELS = [10.22, 9.0, 8.0, 7.5]
+# Study 3b tilføjer NPS_PRED_INTERCEPT som faktor — tæt grid for
+# at kortlægge den fulde (intercept × ρ)-overflade.
+INTERCEPT_LEVELS = [10.22, 9.5, 9.0, 8.75, 8.5, 8.25, 8.0, 7.75, 7.5, 7.25, 7.0, 6.5]
 
-RHO_LEVELS = [0.00, 0.22, 0.50, 0.85, 1.00]
+RHO_LEVELS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.85, 0.95, 1.0]
 SAMPLING_MODES = ["hard"]           # kun hard mode i Study 3b
-DISCIPLINES = ["FCFS", "LRTF", "NPS"]
+DISCIPLINES = ["LRTF", "NPS"]      # FCFS tilføjes separat (ρ-invariant)
 AGENT_LEVELS = [6]                  # fikseret til 6 (kritisk load)
 
 N_REPLICATIONS = 100
@@ -49,8 +50,16 @@ D_END = 365
 
 def generate_experiment_configs(n_replications: int = N_REPLICATIONS,
                                  d_end: int = D_END) -> list:
-    """Generér alle konfigurationer med intercept som ny faktor."""
+    """
+    Generér alle konfigurationer med tæt intercept × ρ grid.
+
+    LRTF og NPS køres for alle intercept × ρ kombinationer.
+    FCFS er ρ- og intercept-invariant, så den køres kun for ét intercept
+    og alle ρ-niveauer (for at matche paret seeding med de andre discipliner).
+    """
     configs = []
+
+    # LRTF og NPS: fuldt grid
     for nps_int in INTERCEPT_LEVELS:
         for rho_idx, rho in enumerate(RHO_LEVELS):
             for mode in SAMPLING_MODES:
@@ -68,6 +77,26 @@ def generate_experiment_configs(n_replications: int = N_REPLICATIONS,
                                 "replication": rep,
                                 "d_end": d_end,
                             })
+
+    # FCFS: kun ét intercept-niveau (resultatet er identisk for alle),
+    # men alle ρ-niveauer (for at matche seeds med LRTF/NPS)
+    fcfs_intercept = INTERCEPT_LEVELS[0]
+    for rho_idx, rho in enumerate(RHO_LEVELS):
+        for mode in SAMPLING_MODES:
+            for n_agents in AGENT_LEVELS:
+                for rep in range(1, n_replications + 1):
+                    configs.append({
+                        "nps_intercept": fcfs_intercept,
+                        "rho": rho,
+                        "rho_idx": rho_idx,
+                        "sampling_mode": mode,
+                        "discipline": "FCFS",
+                        "n_agents": n_agents,
+                        "sla_hours": None,
+                        "replication": rep,
+                        "d_end": d_end,
+                    })
+
     return configs
 
 
@@ -146,24 +175,35 @@ def run_experiments(n_workers: int = None,
 
 
 def print_summary(df: pd.DataFrame) -> None:
-    """Print hovedresultat: NPS vs LRTF som funktion af intercept og ρ."""
+    """Print hovedresultat: NPS − LRTF heatmap."""
     print("\n" + "=" * 70)
-    print("STUDY 3b: NPS − LRTF ADVANTAGE som funktion af intercept × ρ")
+    print("STUDY 3b: NPS − LRTF ADVANTAGE (individual NPS)")
     print("=" * 70)
 
-    for nps_int in INTERCEPT_LEVELS:
-        print(f"\n--- NPS intercept = {nps_int} ---")
-        sub = df[df["nps_intercept"] == nps_int]
+    # FCFS er kun kørt for ét intercept — hent dens baseline
+    fcfs_data = df[df["discipline"] == "FCFS"]
+    fcfs_by_rho = fcfs_data.groupby("rho")["avg_individual_nps"].mean()
 
-        nps_means = sub[sub["discipline"] == "NPS"].groupby("rho")["avg_individual_nps"].mean()
-        lrtf_means = sub[sub["discipline"] == "LRTF"].groupby("rho")["avg_individual_nps"].mean()
-        fcfs_means = sub[sub["discipline"] == "FCFS"].groupby("rho")["avg_individual_nps"].mean()
+    intercepts = sorted(df["nps_intercept"].unique(), reverse=True)
+    rhos = sorted(df["rho"].unique())
 
-        for rho in sorted(sub["rho"].unique()):
-            adv_lrtf = nps_means[rho] - lrtf_means[rho]
-            adv_fcfs = nps_means[rho] - fcfs_means[rho]
-            print(f"  ρ={rho:.2f}: NPS−LRTF={adv_lrtf:+.4f}  NPS−FCFS={adv_fcfs:+.4f}  "
-                  f"NPS={nps_means[rho]:.4f}  LRTF={lrtf_means[rho]:.4f}  FCFS={fcfs_means[rho]:.4f}")
+    header = f"{'Intercept':>10} | " + " | ".join(f"ρ={r:.2f}" for r in rhos)
+    print(f"\n{header}")
+    print("-" * len(header))
+
+    for nps_int in intercepts:
+        row = []
+        for rho in rhos:
+            nps_sub = df[(df["nps_intercept"] == nps_int) & (df["rho"] == rho)
+                          & (df["discipline"] == "NPS")]
+            lrtf_sub = df[(df["nps_intercept"] == nps_int) & (df["rho"] == rho)
+                           & (df["discipline"] == "LRTF")]
+            if len(nps_sub) > 0 and len(lrtf_sub) > 0:
+                adv = nps_sub["avg_individual_nps"].mean() - lrtf_sub["avg_individual_nps"].mean()
+                row.append(f"{adv:+.4f}")
+            else:
+                row.append("   n/a ")
+        print(f"{nps_int:>10.2f} | " + " | ".join(row))
 
 
 if __name__ == "__main__":
