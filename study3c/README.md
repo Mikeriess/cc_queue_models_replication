@@ -106,6 +106,6 @@ study3c/
 - [x] simulation.py med topic_aware-udvidelse
 - [x] run_experiments.py
 - [x] generate_plots.py
-- [ ] Smoke test
-- [ ] Fuldt eksperiment kørt
-- [ ] comparison_report.md
+- [x] Smoke test (verificeret at topic_aware fordobler Var(predicted_nps))
+- [x] Fuldt eksperiment kørt (4.500 runs på Frigg)
+- [x] comparison_report.md (hovedfund: H1 delvist bekræftet — topic_aware kræver intercept ≤ 8.0 for positiv effekt)
