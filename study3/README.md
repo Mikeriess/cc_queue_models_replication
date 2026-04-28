@@ -111,5 +111,5 @@ den stærke "perfect activity correlation"-antagelse.
       forventet artefakt dokumenteret i study3.md)
 - [x] run_experiments.py
 - [x] generate_plots.py
-- [ ] Fuldt eksperiment kørt på server
-- [ ] comparison_report.md (genereres efter kørsel)
+- [x] Fuldt eksperiment kørt (9.000 runs, results/results.csv)
+- [x] comparison_report.md (hovedfund: NPS ≡ LRTF uanset ρ)
