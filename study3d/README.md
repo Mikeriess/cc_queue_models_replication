@@ -136,6 +136,6 @@ study3d/
 - [x] empirical multinomial saved
 - [x] run_experiments.py
 - [x] generate_plots.py
-- [ ] Smoke test
-- [ ] Full experiment run
-- [ ] comparison_report.md
+- [x] Smoke test
+- [x] Full experiment run (2,500 runs on Frigg)
+- [x] comparison_report.md (H₃d partially confirmed; SRTF emerges as strongest baseline)
