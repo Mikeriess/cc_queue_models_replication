@@ -7,6 +7,7 @@ study2/results/daily_queue_lengths.csv
 study3/results/daily_queue_lengths.csv
 study3c/results/daily_queue_lengths.csv
 study3d/results/daily_queue_lengths.csv
+study3e/results/daily_queue_lengths.csv
 
 # Gammel top-level output-mappe (før reorganisering)
 output/
