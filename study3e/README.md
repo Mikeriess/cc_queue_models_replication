@@ -112,8 +112,8 @@ study3e/
 - [x] run_experiments.py (3,900-run grid, ρ ∈ {0, 0.5, 1.0})
 - [x] generate_plots.py (6 plots)
 - [x] Dockerfile + requirements.txt
-- [ ] Smoke test
-- [ ] Quick mode (--quick)
-- [ ] Full experiment on Frigg
-- [ ] comparison_report.md
+- [x] Smoke test
+- [x] Quick mode (--quick)
+- [x] Full experiment on Frigg (3,900 runs)
+- [x] comparison_report.md (H2 strongly confirmed; NPS_BINNED at f*=0.20 matches SRTF at ρ=1)
 - [ ] Study3e_Report.md for coauthor review
