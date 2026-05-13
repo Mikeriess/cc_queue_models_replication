@@ -1,0 +1,14 @@
+{
+  "source": "Case-company empirical NPS responses (n=1898) supplied by paper authors",
+  "note": "Levels 0 and 0.1 from the original frequency table merged into bin 0",
+  "n_total": 1898,
+  "weighted_mean": 8.828,
+  "bins": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "counts":      [71, 11, 9, 9, 10, 48, 26, 74, 201, 253, 1186],
+  "proportions": [0.03741, 0.00580, 0.00474, 0.00474, 0.00527, 0.02529, 0.01370, 0.03899, 0.10590, 0.13330, 0.62487],
+  "segment_proportions": {
+    "detractors_0_to_6": 0.09695,
+    "passives_7_to_8":   0.14489,
+    "promoters_9_to_10": 0.75817
+  }
+}
